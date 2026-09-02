@@ -42,7 +42,7 @@ async def db_error_handler(_request: Request, exc: SQLAlchemyError) -> JSONRespo
     else:
         code = "DB_ERROR"
         status = 500
-        detail = "A database error occurred."
+        detail = f"A database error occurred: {exc!r}"
     return JSONResponse(
         status_code=status,
         content={
@@ -51,5 +51,6 @@ async def db_error_handler(_request: Request, exc: SQLAlchemyError) -> JSONRespo
             "status": status,
             "code": code,
             "detail": detail,
+            "meta": {},
         },
     )

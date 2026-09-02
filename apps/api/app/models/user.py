@@ -7,6 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 from app.db.session import TimestampMixin, UUIDPrimaryKeyMixin, UserRole
+from app.models.family import Family
 
 
 class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -17,6 +18,10 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     role: Mapped[str] = mapped_column(String(32), default=UserRole.FAMILY_OWNER, nullable=False)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     full_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    family_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("families.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+    family: Mapped["Family"] = relationship(back_populates="members")
 
     sessions: Mapped[list["Session"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 

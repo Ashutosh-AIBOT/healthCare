@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError
 from app.core.security import decode_token
-from app.db.session import get_db
+from app.db.session import get_db, set_tenant_context
 from app.models.user import User
 from app.services.auth_service import auth_service
 
@@ -34,4 +34,6 @@ async def get_current_user(
             detail="Invalid or expired access token.",
         ) from exc
 
-    return await auth_service.get_user(db, user_id)
+    user = await auth_service.get_user(db, user_id)
+    await set_tenant_context(db, user.family_id)
+    return user

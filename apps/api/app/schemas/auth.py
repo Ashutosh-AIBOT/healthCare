@@ -24,6 +24,7 @@ class UserOut(BaseModel):
     email: EmailStr
     role: str
     full_name: str | None
+    family_id: uuid.UUID | None
     is_verified: bool
     created_at: datetime
 

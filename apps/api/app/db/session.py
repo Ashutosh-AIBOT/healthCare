@@ -16,6 +16,7 @@ AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_co
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
+        await set_tenant_context(session, None)
         try:
             yield session
             await session.commit()
@@ -29,10 +30,8 @@ async def set_tenant_context(session: AsyncSession, family_id: uuid.UUID | None)
     if family_id is None:
         await session.execute(text("SET LOCAL app.family_id = ''"))
     else:
-        await session.execute(
-            text("SET LOCAL app.family_id = :fid"),
-            {"fid": str(family_id)},
-        )
+        fid = str(uuid.UUID(str(family_id)))
+        await session.execute(text(f"SET LOCAL app.family_id = '{fid}'"))
 
 
 class TimestampMixin:

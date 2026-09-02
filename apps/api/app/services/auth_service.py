@@ -14,7 +14,8 @@ from app.core.security import (
     hash_password,
     verify_password,
 )
-from app.db.session import UserRole
+from app.db.session import UserRole, set_tenant_context
+from app.models.family import Family
 from app.models.user import Session, User
 from app.schemas.auth import AuthResponse, RegisterRequest, TokenResponse, UserOut
 
@@ -33,11 +34,16 @@ class AuthService:
                 detail="An account with this email already exists.",
             )
 
+        family = Family(name=f"{payload.full_name or 'My'}'s Family")
+        db.add(family)
+        await db.flush()
+
         user = User(
             email=payload.email.lower(),
             password_hash=hash_password(payload.password),
             full_name=payload.full_name,
             role=UserRole.FAMILY_OWNER,
+            family_id=family.id,
             is_verified=settings.otp_dev_mode,
         )
         db.add(user)
@@ -94,6 +100,7 @@ class AuthService:
                 detail="Invalid or expired refresh token.",
             )
 
+        await set_tenant_context(db, user.family_id)
         session.revoked_at = datetime.now(UTC)
         return await self._issue_tokens(db, user)
 
@@ -104,6 +111,7 @@ class AuthService:
         return user
 
     async def _issue_tokens(self, db: AsyncSession, user: User) -> TokenResponse:
+        await set_tenant_context(db, user.family_id)
         session_row = Session(
             user_id=user.id,
             refresh_token_hash="",

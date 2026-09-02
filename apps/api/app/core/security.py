@@ -1,6 +1,6 @@
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -33,6 +33,7 @@ def create_access_token(user_id: UUID, role: str) -> str:
             "sub": str(user_id),
             "role": role,
             "type": TOKEN_TYPE_ACCESS,
+            "jti": str(uuid4()),
             "exp": expire,
         }
     )

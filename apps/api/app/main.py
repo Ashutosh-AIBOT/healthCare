@@ -1,14 +1,20 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.api.v1.router import api_router
+from app.core.config import settings
 from app.core.errors import AppError, app_error_handler, db_error_handler
+from app.db.session import engine
 from sqlalchemy.exc import SQLAlchemyError
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    async with engine.connect() as conn:
+        await conn.execute(text("SELECT 1"))
     yield
 
 
@@ -24,5 +30,10 @@ def health() -> dict[str, str]:
 
 
 @app.get("/health/ready")
-def ready() -> dict[str, str]:
+async def ready() -> dict[str, str]:
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+    except Exception:
+        return {"status": "degraded", "database": "unavailable"}
     return {"status": "ready"}

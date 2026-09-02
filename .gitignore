@@ -3,3 +3,10 @@ node_modules
 __pycache__
 *.pyc
 .env.local
+.venv
+*.egg-info
+.pytest_cache
+.mypy_cache
+.ruff_cache
+dist
+.next

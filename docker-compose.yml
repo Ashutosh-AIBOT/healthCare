@@ -69,12 +69,22 @@ services:
     build:
       context: ./apps/api
       dockerfile: Dockerfile
+    ports:
+      - "8080:8000"
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-aarogya}:${POSTGRES_PASSWORD:-aarogya}@pgbouncer:6432/${POSTGRES_DB:-aarogya}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-aarogya}:${POSTGRES_PASSWORD:-aarogya}@postgres:5432/${POSTGRES_DB:-aarogya}
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      OTP_DEV_MODE: "true"
       REDIS_URL: redis://redis:6379/0
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minio}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minio123}
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-Aarogya}
+      SMTP_FROM_ADDRESS: ${SMTP_FROM_ADDRESS:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -89,8 +99,10 @@ services:
     build:
       context: ./apps/web
       dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NEXT_PUBLIC_API_URL: http://localhost:8080
     depends_on:
       - api
     networks:
@@ -100,9 +112,9 @@ services:
     build:
       context: ./apps/api
       dockerfile: Dockerfile
-    command: celery -A apps.api.app.tasks.celery_app worker --loglevel=info
+    command: celery -A app.tasks.celery_app worker --loglevel=info
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-aarogya}:${POSTGRES_PASSWORD:-aarogya}@pgbouncer:6432/${POSTGRES_DB:-aarogya}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-aarogya}:${POSTGRES_PASSWORD:-aarogya}@postgres:5432/${POSTGRES_DB:-aarogya}
       REDIS_URL: redis://redis:6379/0
     depends_on:
       - redis
@@ -114,9 +126,9 @@ services:
     build:
       context: ./apps/api
       dockerfile: Dockerfile
-    command: celery -A apps.api.app.tasks.celery_app beat --loglevel=info
+    command: celery -A app.tasks.celery_app beat --loglevel=info
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-aarogya}:${POSTGRES_PASSWORD:-aarogya}@pgbouncer:6432/${POSTGRES_DB:-aarogya}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-aarogya}:${POSTGRES_PASSWORD:-aarogya}@postgres:5432/${POSTGRES_DB:-aarogya}
       REDIS_URL: redis://redis:6379/0
     depends_on:
       - redis

@@ -16,4 +16,4 @@ class Family(TimestampMixin, Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
-    members: Mapped[list["User"]] = relationship(back_populates="family")
+    family_members: Mapped[list["FamilyMember"]] = relationship(back_populates="family", cascade="all, delete-orphan")

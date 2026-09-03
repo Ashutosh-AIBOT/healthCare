@@ -135,7 +135,5 @@ class ProviderProfileOut(BaseModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
-    doctor_details: DoctorDetailBase | None = None
-    lab_details: LabDetailBase | None = None
 
     model_config = {"from_attributes": True}

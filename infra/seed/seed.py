@@ -149,6 +149,15 @@ async def ensure_user(db: AsyncSession, spec: dict) -> User:
             slug=spec["handle"],
             verification_status="verified",
             is_active=True,
+            city="Bangalore",
+            state="Karnataka",
+            country="India",
+            pincode="560001",
+            consultation_fee_paise=20000,
+            years_experience=8,
+            rating=4.8,
+            response_rate=92.0,
+            completion_rate=88.0,
         )
         db.add(profile)
         await db.flush()
@@ -171,6 +180,15 @@ async def ensure_user(db: AsyncSession, spec: dict) -> User:
             slug=spec["handle"],
             verification_status="verified",
             is_active=True,
+            city="Bangalore",
+            state="Karnataka",
+            country="India",
+            pincode="560001",
+            consultation_fee_paise=None,
+            years_experience=5,
+            rating=4.6,
+            response_rate=95.0,
+            completion_rate=90.0,
         )
         db.add(profile)
         await db.flush()
@@ -180,7 +198,7 @@ async def ensure_user(db: AsyncSession, spec: dict) -> User:
                 accreditation="NABL Accredited",
                 home_collection_enabled=True,
                 report_turnaround_hours=24,
-                serviceable_pincodes="110001,110002,110003",
+                serviceable_pincodes="560001,560002,560003",
             )
         )
 

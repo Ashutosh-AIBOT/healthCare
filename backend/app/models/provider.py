@@ -1,7 +1,7 @@
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -33,6 +33,13 @@ class ProviderProfile(TimestampMixin, Base):
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    city: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    state: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    country: Mapped[str] = mapped_column(String(120), default="India", nullable=False)
+    pincode: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    rating: Mapped[float | None] = mapped_column(Float, nullable=True)
+    response_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    completion_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     user: Mapped["User"] = relationship(foreign_keys=[user_id])
     verified_by: Mapped["User | None"] = relationship(foreign_keys=[verified_by_user_id])

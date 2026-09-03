@@ -26,6 +26,7 @@ from app.models.consent import ConsentGrant
 from app.models.family import Family
 from app.models.family_member import FamilyMember
 from app.models.lab_booking import BookingStatus, LabBooking, LabBookingEvent
+from app.models.lab_test import LabTest
 from app.models.prescription import Prescription, PrescriptionItem
 from app.models.provider import DoctorDetail, LabDetail, ProviderProfile
 from app.models.teleconsult import TeleconsultSession, TeleconsultStatus
@@ -348,7 +349,46 @@ async def ensure_lab_bookings(db: AsyncSession) -> None:
             from_status=None,
             to_status=BookingStatus.REQUESTED,
         )
-    )
+        )
+
+
+async def ensure_lab_tests(db: AsyncSession) -> None:
+    tests = [
+        {
+            "name": "Complete Blood Count",
+            "slug": "complete-blood-count",
+            "description": "General health screening for blood cells",
+            "canonical_unit": "cells/uL",
+            "fasting_required": False,
+            "sample_type": "blood",
+            "turnaround_hours": 24,
+            "price_paise": 250000,
+        },
+        {
+            "name": "Lipid Profile",
+            "slug": "lipid-profile",
+            "description": "Cholesterol and triglyceride levels",
+            "canonical_unit": "mg/dL",
+            "fasting_required": True,
+            "sample_type": "blood",
+            "turnaround_hours": 24,
+            "price_paise": 350000,
+        },
+        {
+            "name": "Women's Health Panel",
+            "slug": "womens-health-panel",
+            "description": "Screening for women's health concerns including hormonal and reproductive health",
+            "canonical_unit": "various",
+            "fasting_required": True,
+            "sample_type": "blood",
+            "turnaround_hours": 48,
+            "price_paise": 500000,
+        },
+    ]
+    for test_data in tests:
+        existing = await db.scalar(select(LabTest).where(LabTest.slug == test_data["slug"]))
+        if existing is None:
+            db.add(LabTest(**test_data))
 
 
 async def main() -> None:
@@ -368,6 +408,7 @@ async def main() -> None:
             print(f"seeded {user.email} ({user.role})")
         await ensure_appointments_and_consult_loop(db)
         await ensure_lab_bookings(db)
+        await ensure_lab_tests(db)
         await set_rls_bypass(db, False)
         await db.commit()
 

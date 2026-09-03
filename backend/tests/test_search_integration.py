@@ -14,7 +14,9 @@ from tests.helpers_auth import register_verified
 
 
 def _make_profile(db, provider_type: str, city: str | None = None, pincode: str | None = None) -> ProviderProfile:
+    user_id = uuid.uuid4()
     user = User(
+        id=user_id,
         email=f"search-{uuid.uuid4()}@example.com",
         handle=f"search_{uuid.uuid4().hex[:8]}",
         password_hash="hash",
@@ -22,7 +24,7 @@ def _make_profile(db, provider_type: str, city: str | None = None, pincode: str 
         is_verified=True,
     )
     db.add(user)
-    db.flush()
+    await db.flush()
 
     profile = ProviderProfile(
         user_id=user.id,
@@ -39,7 +41,7 @@ def _make_profile(db, provider_type: str, city: str | None = None, pincode: str 
         years_experience=5,
     )
     db.add(profile)
-    db.flush()
+    await db.flush()
 
     if provider_type == "doctor":
         db.add(
@@ -56,7 +58,7 @@ def _make_profile(db, provider_type: str, city: str | None = None, pincode: str 
                 serviceable_pincodes=pincode or "560001,560002",
             )
         )
-    db.flush()
+    await db.flush()
     return profile
 
 

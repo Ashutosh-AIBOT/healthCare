@@ -122,6 +122,15 @@ class AppointmentService:
             fee_paise=provider.consultation_fee_paise,
             idempotency_key=idempotency_key,
         )
+        event = AppointmentEvent(
+            appointment_id=appointment.id,
+            actor_user_id=requested_by_user_id,
+            actor_role="family",
+            from_status=None,
+            to_status=AppointmentStatus.REQUESTED,
+            note=None,
+        )
+        appointment.events.append(event)
         db.add(appointment)
         try:
             await db.flush()
@@ -140,17 +149,6 @@ class AppointmentService:
                 detail="This slot is already booked for the selected doctor.",
             ) from exc
 
-        db.add(
-            AppointmentEvent(
-                appointment_id=appointment.id,
-                actor_user_id=requested_by_user_id,
-                actor_role="family",
-                from_status=None,
-                to_status=AppointmentStatus.REQUESTED,
-                note=None,
-            )
-        )
-        await db.flush()
         logger.info(
             "appointment requested appointment_id=%s provider_profile_id=%s family_id=%s",
             appointment.id,
@@ -194,16 +192,16 @@ class AppointmentService:
         ):
             appointment.cancelled_at = now
 
-        db.add(
-            AppointmentEvent(
-                appointment_id=appointment.id,
-                actor_user_id=actor_user.id,
-                actor_role=actor_role,
-                from_status=from_status,
-                to_status=to_status,
-                note=note,
-            )
+        event = AppointmentEvent(
+            appointment_id=appointment.id,
+            actor_user_id=actor_user.id,
+            actor_role=actor_role,
+            from_status=from_status,
+            to_status=to_status,
+            note=note,
         )
+        appointment.events.append(event)
+        db.add(appointment)
         await db.flush()
         return appointment
 

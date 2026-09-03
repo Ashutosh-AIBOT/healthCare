@@ -25,6 +25,7 @@ from app.core.security import hash_password
 from app.db.session import UserRole, set_rls_bypass
 from app.models.family import Family
 from app.models.family_member import FamilyMember
+from app.models.provider import DoctorDetail, LabDetail, ProviderProfile
 from app.models.user import Consent, ConsentDocument, SystemSetting, User
 
 DEMO_PASSWORD = "Demo@1234"
@@ -139,6 +140,49 @@ async def ensure_user(db: AsyncSession, spec: dict) -> User:
             )
         )
         user.family_id = family.id
+
+    if spec["role"] == UserRole.DOCTOR:
+        profile = ProviderProfile(
+            user_id=user.id,
+            provider_type="doctor",
+            display_name=spec["full_name"],
+            slug=spec["handle"],
+            verification_status="verified",
+            is_active=True,
+        )
+        db.add(profile)
+        await db.flush()
+        db.add(
+            DoctorDetail(
+                provider_profile_id=profile.id,
+                registration_number="DOC-DEMO-001",
+                qualifications="MBBS, MD (General Medicine)",
+                specializations="General Medicine, Preventive Health",
+                languages="English, Hindi",
+                teleconsult_enabled=True,
+                home_visit_enabled=False,
+            )
+        )
+    elif spec["role"] == UserRole.LAB_ADMIN:
+        profile = ProviderProfile(
+            user_id=user.id,
+            provider_type="lab",
+            display_name=spec["full_name"],
+            slug=spec["handle"],
+            verification_status="verified",
+            is_active=True,
+        )
+        db.add(profile)
+        await db.flush()
+        db.add(
+            LabDetail(
+                provider_profile_id=profile.id,
+                accreditation="NABL Accredited",
+                home_collection_enabled=True,
+                report_turnaround_hours=24,
+                serviceable_pincodes="110001,110002,110003",
+            )
+        )
 
     return user
 

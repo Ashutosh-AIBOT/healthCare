@@ -13,6 +13,7 @@ from app.models import prescription
 from app.models import provider
 from app.models import teleconsult
 from app.models import user
+from app.models import vitals
 from app.models import visibility
 
 __all__ = [
@@ -31,5 +32,6 @@ __all__ = [
     "provider",
     "teleconsult",
     "user",
+    "vitals",
     "visibility",
 ]

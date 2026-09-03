@@ -1,14 +1,45 @@
+# Secrets & env
 .env
+.env.*
+!.env.example
+frontend/.env.local
+
+# Dependencies & build
 node_modules
+.venv
+venv
+dist
+.next
+*.egg-info
+frontend/tsconfig.tsbuildinfo
+apps/web/tsconfig.tsbuildinfo
+
+# Python caches
 __pycache__
 *.pyc
-.env.local
-.venv
-*.egg-info
 .pytest_cache
 .mypy_cache
 .ruff_cache
-dist
-.next
-frontend/tsconfig.tsbuildinfo
-apps/web/tsconfig.tsbuildinfo
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.log
+*.swp
+
+# ---------------------------------------------------------------------------
+# NEVER commit agent / IDE tooling dumps (local only — not product code)
+# ---------------------------------------------------------------------------
+.agents/
+.21st/
+.claude/
+.codex/
+.cursor/skills/
+.cursor/projects/
+.github/copilot*
+.idea/
+.vscode/
+*.code-workspace
+
+# Keep product Cursor rules that are intentional repo policy:
+# .cursor/rules/*.md is allowed (tracked). Skills/agents caches are not.

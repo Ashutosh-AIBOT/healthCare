@@ -31,18 +31,14 @@ Thumbs.db
 *.swp
 
 # ---------------------------------------------------------------------------
-# NEVER commit agent / IDE tooling dumps (local only — not product code)
+# Local-only — never on GitHub
 # ---------------------------------------------------------------------------
 .agents/
 .21st/
 .claude/
 .codex/
-.cursor/skills/
-.cursor/projects/
-.github/copilot*
+.cursor/
 .idea/
 .vscode/
 *.code-workspace
-
-# Keep product Cursor rules that are intentional repo policy:
-# .cursor/rules/*.md is allowed (tracked). Skills/agents caches are not.
+.github/copilot*

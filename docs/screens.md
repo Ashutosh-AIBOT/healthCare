@@ -2,7 +2,7 @@
 
 Every screen in the product, with the states it must implement. An agent building UI should not invent structure — build what is specified here, and if something is genuinely missing, add it to this file in the same PR.
 
-**Universal requirements for every screen** (from [`12-ui-states-a11y.md`](../.cursor/rules/12-ui-states-a11y.md)): skeleton loading, empty state with CTA, error state with retry, responsive 360→1920 with no horizontal scroll, keyboard reachable, dark and light, i18n keys only, Tailwind only.
+**Universal requirements for every screen:** skeleton loading, empty state with CTA, error state with retry, responsive 360→1920 with no horizontal scroll, keyboard reachable, dark and light, i18n keys only, Tailwind only.
 
 ---
 

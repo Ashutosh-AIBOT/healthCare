@@ -1,13 +1,18 @@
-"""create provider_profiles, doctor_details, lab_details, provider_claims, doctor_availability"""
+"""create provider_profiles, doctor_details, lab_details, provider_claims, doctor_availability
+
+Revision ID: 013
+Revises: 012
+"""
+from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID
 
-revision = "013_provider_platform"
-down_revision = "012_visibility_and_documents"
-branch_labels = None
-depends_on = None
+revision: str = "013"
+down_revision: Union[str, None] = "012"
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:

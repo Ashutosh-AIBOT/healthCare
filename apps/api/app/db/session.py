@@ -28,10 +28,16 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 async def set_tenant_context(session: AsyncSession, family_id: uuid.UUID | None) -> None:
     """SET LOCAL for PgBouncer transaction pooling — never session-level set_config."""
     if family_id is None:
-        await session.execute(text("SET LOCAL app.family_id = ''"))
+        await session.execute(text("SELECT set_config('app.family_id', '', true)"))
     else:
         fid = str(uuid.UUID(str(family_id)))
-        await session.execute(text(f"SET LOCAL app.family_id = '{fid}'"))
+        await session.execute(text("SELECT set_config('app.family_id', :fid, true)"), {"fid": fid})
+
+
+async def set_rls_bypass(session: AsyncSession, enabled: bool) -> None:
+    """Auth bootstrap lookups need a temporary RLS bypass — never leave this on."""
+    value = "on" if enabled else "off"
+    await session.execute(text("SELECT set_config('app.bypass_rls', :v, true)"), {"v": value})
 
 
 class TimestampMixin:

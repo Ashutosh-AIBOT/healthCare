@@ -7,6 +7,7 @@ another family's appointments.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -189,6 +190,56 @@ class TestAppointmentBooking:
         )
         assert second.status_code == 409
         assert second.json()["code"] == "SLOT_ALREADY_BOOKED"
+
+    async def test_concurrent_double_booking_rejected(self, client, db):
+        login = await register_verified(
+            client, email="appt-concurrent@example.com", handle="appt_concurrent", full_name="Concurrent"
+        )
+        token = login.json()["tokens"]["access_token"]
+
+        await client.post(
+            "/api/v1/families/",
+            json={"name": "Concurrent Family"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        member_resp = await client.post(
+            "/api/v1/families/members",
+            json={"relation": "other", "date_of_birth": "1990-01-01", "gender": "male"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert member_resp.status_code == 201, member_resp.text
+        member_id = member_resp.json()["id"]
+
+        await set_rls_bypass(db, True)
+        doctor_user, profile = await _make_verified_doctor(db, slug_suffix="concurrent")
+        await set_rls_bypass(db, False)
+
+        start, end = _future_window(hours=10)
+        body = {
+            "member_id": member_id,
+            "provider_profile_id": str(profile.id),
+            "scheduled_start": start.isoformat(),
+            "scheduled_end": end.isoformat(),
+        }
+        headers = {"Authorization": f"Bearer {token}"}
+
+        results = await asyncio.gather(
+            client.post("/api/v1/appointments", json=body, headers=headers),
+            client.post("/api/v1/appointments", json=body, headers=headers),
+            return_exceptions=True,
+        )
+
+        statuses = []
+        for result in results:
+            if isinstance(result, Exception):
+                statuses.append(type(result).__name__)
+            else:
+                statuses.append(result.status_code)
+
+        assert 201 in statuses, f"Expected one success, got {statuses}"
+        assert statuses.count(409) == 1, f"Expected one 409, got {statuses}"
+        conflicts = [r for r in results if not isinstance(r, Exception) and r.status_code == 409]
+        assert conflicts[0].json()["code"] == "SLOT_ALREADY_BOOKED"
 
     async def test_unverified_doctor_cannot_be_booked(self, client, db):
         login = await register_verified(

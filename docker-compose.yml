@@ -60,6 +60,25 @@ services:
     networks:
       - aarogya
 
+
+  createbuckets:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 $${MINIO_ROOT_USER:-minio} $${MINIO_ROOT_PASSWORD:-minio123};
+      mc mb --ignore-existing local/aarogya-reports;
+      mc mb --ignore-existing local/aarogya-private;
+      exit 0;
+      "
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio123}
+    networks:
+      - aarogya
+
   mailhog:
     image: mailhog/mailhog:latest
     networks:
@@ -67,24 +86,25 @@ services:
 
   api:
     build:
-      context: ./apps/api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/api/Dockerfile
     ports:
       - "8000:8000"
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-aarogya}:${POSTGRES_PASSWORD:-aarogya}@postgres:5432/${POSTGRES_DB:-aarogya}
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
       OTP_DEV_MODE: "true"
+      OTP_DEV_CODE: ${OTP_DEV_CODE:-123456}
       REDIS_URL: redis://redis:6379/0
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minio}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minio123}
-      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_USER: ${SMTP_USER:-}
-      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-Aarogya}
-      SMTP_FROM_ADDRESS: ${SMTP_FROM_ADDRESS:-}
+      MINIO_BUCKET_REPORTS: aarogya-reports
+      SMTP_HOST: mailhog
+      SMTP_PORT: "1025"
+      SMTP_FROM_NAME: Aarogya
+      SMTP_FROM_ADDRESS: noreply@aarogya.local
+      APP_ENV: ${APP_ENV:-development}
     depends_on:
       postgres:
         condition: service_healthy
@@ -92,6 +112,14 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      createbuckets:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
     networks:
       - aarogya
 
@@ -113,28 +141,31 @@ services:
 
   worker:
     build:
-      context: ./apps/api
-      dockerfile: Dockerfile
-    command: celery -A app.tasks.celery_app worker --loglevel=info
+      context: .
+      dockerfile: apps/api/Dockerfile
+    command: ["celery", "-A", "app.tasks.celery_app", "worker", "--loglevel=info"]
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-aarogya}:${POSTGRES_PASSWORD:-aarogya}@postgres:5432/${POSTGRES_DB:-aarogya}
       REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
     depends_on:
       - redis
       - postgres
+      - api
     networks:
       - aarogya
 
   beat:
     build:
-      context: ./apps/api
-      dockerfile: Dockerfile
-    command: celery -A app.tasks.celery_app beat --loglevel=info
+      context: .
+      dockerfile: apps/api/Dockerfile
+    command: ["celery", "-A", "app.tasks.celery_app", "beat", "--loglevel=info"]
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-aarogya}:${POSTGRES_PASSWORD:-aarogya}@postgres:5432/${POSTGRES_DB:-aarogya}
       REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
     depends_on:
-      - redis
+      - worker
     networks:
       - aarogya
 

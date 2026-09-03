@@ -4,6 +4,7 @@ from app.models import documents
 from app.models import family
 from app.models import family_member
 from app.models import invite
+from app.models import lab_booking
 from app.models import member_medical_profile
 from app.models import member_transfer
 from app.models import otp
@@ -20,6 +21,7 @@ __all__ = [
     "family",
     "family_member",
     "invite",
+    "lab_booking",
     "member_medical_profile",
     "member_transfer",
     "otp",

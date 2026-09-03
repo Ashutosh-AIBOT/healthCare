@@ -25,6 +25,7 @@ from app.models.appointment import Appointment, AppointmentEvent, AppointmentSta
 from app.models.consent import ConsentGrant
 from app.models.family import Family
 from app.models.family_member import FamilyMember
+from app.models.lab_booking import BookingStatus, LabBooking, LabBookingEvent
 from app.models.prescription import Prescription, PrescriptionItem
 from app.models.provider import DoctorDetail, LabDetail, ProviderProfile
 from app.models.teleconsult import TeleconsultSession, TeleconsultStatus
@@ -296,6 +297,60 @@ async def ensure_appointments_and_consult_loop(db: AsyncSession) -> None:
         )
 
 
+async def ensure_lab_bookings(db: AsyncSession) -> None:
+    demo_user = await db.scalar(select(User).where(User.email == "demo@aarogya.app"))
+    if demo_user is None or demo_user.family_id is None:
+        return
+
+    family = await db.get(Family, demo_user.family_id)
+    if family is None:
+        return
+
+    member = await db.scalar(
+        select(FamilyMember).where(FamilyMember.family_id == family.id, FamilyMember.user_id == demo_user.id)
+    )
+    if member is None:
+        return
+
+    lab = await db.scalar(select(User).where(User.email == "lab@aarogya.app"))
+    if lab is None:
+        return
+
+    profile = await db.scalar(
+        select(ProviderProfile).where(ProviderProfile.user_id == lab.id, ProviderProfile.provider_type == "lab")
+    )
+    if profile is None:
+        return
+
+    now = datetime.now(UTC)
+    booking = LabBooking(
+        family_id=family.id,
+        member_id=member.id,
+        provider_profile_id=profile.id,
+        requested_by_user_id=demo_user.id,
+        status=BookingStatus.REQUESTED,
+        total_price_paise=250000,
+        collection_slot_start=now + timedelta(days=2, hours=8),
+        collection_slot_end=now + timedelta(days=2, hours=9),
+        collection_address="123 Main St, Bangalore",
+        home_collection=1,
+        test_ids=str(uuid.uuid4()),
+        idempotency_key=f"lab-booking-seed-{uuid.uuid4().hex[:8]}",
+    )
+    db.add(booking)
+    await db.flush()
+
+    db.add(
+        LabBookingEvent(
+            booking_id=booking.id,
+            actor_user_id=demo_user.id,
+            actor_role="family",
+            from_status=None,
+            to_status=BookingStatus.REQUESTED,
+        )
+    )
+
+
 async def main() -> None:
     database_url = os.environ.get(
         "DATABASE_URL",
@@ -312,6 +367,7 @@ async def main() -> None:
             user = await ensure_user(db, spec)
             print(f"seeded {user.email} ({user.role})")
         await ensure_appointments_and_consult_loop(db)
+        await ensure_lab_bookings(db)
         await set_rls_bypass(db, False)
         await db.commit()
 

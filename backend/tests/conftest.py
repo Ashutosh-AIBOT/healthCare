@@ -53,6 +53,7 @@ async def clean_db(engine):
                 "TRUNCATE TABLE backup_codes, totp_secrets, consents, consent_documents, "
                 "sessions, otp_codes, consent_access_logs, member_claims, member_visibility_grants, "
                 "document_chunks, lab_report_values, documents, jobs, "
+                "appointment_events, appointments, "
                 "member_transfers, member_medical_profiles, invites, "
                 "family_members, users, families RESTART IDENTITY CASCADE"
             )

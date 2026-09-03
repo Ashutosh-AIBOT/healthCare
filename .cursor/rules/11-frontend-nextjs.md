@@ -1,6 +1,6 @@
 ---
 description: Next.js App Router patterns, data fetching, auth handling and component boundaries
-globs: apps/web/**/*.{ts,tsx}
+globs: frontend/**/*.{ts,tsx}
 alwaysApply: false
 ---
 

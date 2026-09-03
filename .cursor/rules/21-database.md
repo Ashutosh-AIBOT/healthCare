@@ -1,6 +1,6 @@
 ---
 description: Database naming, indexing, RLS, migrations and data-type rules
-globs: apps/api/app/{models,db,migrations}/**/*.py
+globs: backend/app/{models,db,migrations}/**/*.py
 alwaysApply: false
 ---
 

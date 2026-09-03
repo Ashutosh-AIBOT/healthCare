@@ -1,6 +1,6 @@
 ---
 description: AI safety, RAG correctness, guardrails, prompts and cost rules
-globs: apps/api/app/ai/**/*.py
+globs: backend/app/ai/**/*.py
 alwaysApply: false
 ---
 

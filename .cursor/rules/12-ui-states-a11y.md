@@ -1,6 +1,6 @@
 ---
 description: Required UI states, accessibility and performance budgets for every screen
-globs: apps/web/**/*.tsx
+globs: frontend/**/*.tsx
 alwaysApply: false
 ---
 

@@ -26,7 +26,7 @@ gh auth status
 
 # Python (API)
 source .venv/bin/activate
-pip install -r apps/api/requirements.txt
+pip install -r backend/requirements.txt
 python -c "import fastapi; print('fastapi ok')"
 ```
 
@@ -186,7 +186,7 @@ Network must reach PyPI. In the project root:
 python -m venv .venv
 source .venv/bin/activate
 pip install -U pip
-pip install -r apps/api/requirements.txt
+pip install -r backend/requirements.txt
 ```
 
 If you see `NameResolutionError` for `pypi.org`, fix DNS/network first (VPN, firewall, `/etc/resolv.conf`), then retry.

@@ -1,6 +1,6 @@
 ---
 description: SEO, GEO and structured data rules for public marketing and directory pages
-globs: apps/web/app/(marketing)/**/*.{ts,tsx}
+globs: frontend/app/(marketing)/**/*.{ts,tsx}
 alwaysApply: false
 ---
 

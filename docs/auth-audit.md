@@ -1,7 +1,7 @@
 # Auth audit — existing vs PLAN
 
 **Date:** 2026-09-03  
-**Scope:** `apps/api` auth/OTP/sessions/RLS + web auth surfaces  
+**Scope:** `backend` auth/OTP/sessions/RLS + web auth surfaces  
 **Verdict:** Scaffold only. Safe enough for local family CRUD demos; **not** launch-ready identity.
 
 Compared against [PLAN.md](../PLAN.md) §§ 7.1 / 13, [AGENTS.md](../AGENTS.md) hard rules, and [docs/screens.md](screens.md) auth routes.
@@ -33,7 +33,7 @@ Compared against [PLAN.md](../PLAN.md) §§ 7.1 / 13, [AGENTS.md](../AGENTS.md) 
 
 | Piece | Path |
 |---|---|
-| Register / login / refresh / me | `apps/api/app/api/v1/routers/auth.py`, `services/auth_service.py` |
+| Register / login / refresh / me | `backend/app/api/v1/routers/auth.py`, `services/auth_service.py` |
 | Argon2 hashing, JWT access 15m, refresh rotation | `core/security.py`, `core/config.py` |
 | Sessions table (hash, revoke, device_label) | `models/user.py`, migration `001` |
 | OTP send/verify (hashed, 10m TTL, dev code) | `services/otp_service.py`, `routers/otp.py` |
@@ -51,10 +51,10 @@ Compared against [PLAN.md](../PLAN.md) §§ 7.1 / 13, [AGENTS.md](../AGENTS.md) 
 ### 1. Tokens in JSON — high risk
 `AuthResponse` / `TokenResponse` return `access_token` + `refresh_token` in the body. PLAN hard decision: refresh in **httpOnly Secure cookie**, all browser traffic through **Next route handlers**, no token in client JS.
 
-**Change:** API sets cookie (or BFF sets it); web never stores tokens in memory/localStorage; add `apps/web/app/api/auth/*` proxy + `middleware.ts` role gates.
+**Change:** API sets cookie (or BFF sets it); web never stores tokens in memory/localStorage; add `frontend/app/api/auth/*` proxy + `middleware.ts` role gates.
 
 ### 2. Verification is a no-op — high risk
-```47:48:apps/api/app/services/auth_service.py
+```47:48:backend/app/services/auth_service.py
             is_verified=settings.otp_dev_mode,
 ```
 Register issues tokens immediately. OTP `verify` only sets `consumed_at` — never flips `User.is_verified`. Login never checks verification.
@@ -159,7 +159,7 @@ M2 family work can continue on APIs behind Bearer for now, but **any browser UI 
 | `core/config.py` / `.env.example` | Cookie flags, lockout knobs, SMTP |
 | `db/session.py` + RLS migrations | Bootstrap + more tables |
 | `tests/test_auth_*.py` | Rewrite for cookie + negative cases |
-| `apps/web/**` | BFF routes, middleware, auth screens |
+| `frontend/**` | BFF routes, middleware, auth screens |
 
 ---
 

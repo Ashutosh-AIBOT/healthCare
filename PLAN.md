@@ -136,11 +136,10 @@ aarogya/
 ├── infra/
 │   ├── docker/  seed/  k6/  prometheus/  grafana/
 ├── docs/                       # architecture, api, seo, security, runbook, adr/, screens, data-dictionary
-├── .cursor/rules/              # agent rules (see AGENTS.md)
-├── .github/workflows/
+├── .github/workflows/          # CI only (Cursor/agent folders stay local)
 ├── docker-compose.yml  docker-compose.prod.yml  .env.example
-├── turbo.json  Makefile
-├── PLAN.md  AGENTS.md  CONTRIBUTING.md  SECURITY.md  README.md
+├── Makefile
+├── PLAN.md  AGENTS.md  CONTRIBUTING.md  README.md
 ```
 
 ---
@@ -593,7 +592,7 @@ These are non-markdown files and git operations that could not be created in pla
 
 - `docker-compose.yml`, `docker-compose.prod.yml`, `infra/docker/*` (Dockerfiles, `nginx.conf`)
 - `.env.example`, `.gitignore`, `.editorconfig`, `.dockerignore`
-- `Makefile`, `turbo.json`, root `package.json`, `pnpm-workspace.yaml`
+- `Makefile` (compose, migrate, seed, test)
 - `apps/api/pyproject.toml`, `apps/web/package.json`, `tailwind.config.ts`, `tsconfig.json`
 - `.github/workflows/ci.yml`, `PULL_REQUEST_TEMPLATE.md`, issue templates, `CODEOWNERS`, `dependabot.yml`
 - Directory skeleton with `.gitkeep` placeholders

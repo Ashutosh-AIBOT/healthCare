@@ -2,13 +2,13 @@
 
 You are working on **Aarogya**, a multi-tenant AI health SaaS marketplace handling real medical data (PHI). Mistakes here are not cosmetic: they leak another family's medical records, give someone a diagnosis we are not licensed to give, or silently corrupt a lab trend chart a person makes decisions from.
 
-**Read first:** [PLAN.md](PLAN.md) (what we are building), then the scoped rules in [`.cursor/rules/`](.cursor/rules/).
+**Read first:** [PLAN.md](PLAN.md) and [CONTRIBUTING.md](CONTRIBUTING.md). Cursor rule files live locally under `.cursor/rules/` and are not published to GitHub.
 
 ---
 
 ## The 12 hard rules
 
-1. **Tailwind utilities only.** No `.css`/`.scss` files, no `style={{}}`, no CSS-in-JS, no `<style>` tags. The single exception is `frontend/app/globals.css`, which may contain only Tailwind directives and CSS custom properties that define design tokens. See [`10-frontend-tailwind.md`](.cursor/rules/10-frontend-tailwind.md).
+1. **Tailwind utilities only.** No `.css`/`.scss` files, no `style={{}}`, no CSS-in-JS, no `<style>` tags. The single exception is `frontend/app/globals.css`, which may contain only Tailwind directives and CSS custom properties that define design tokens.
 2. **Business logic lives in `services/`.** Routers parse, authorize, delegate, and return. If a router has an `if` about domain behaviour, it is in the wrong place.
 3. **No LLM, OCR or embedding call in an HTTP request path.** Enqueue a job, return `202` with a `job_id`, stream progress over SSE.
 4. **Every tenant query is scoped.** RLS is on, and tenant context is set with `SET LOCAL` inside the transaction. Never disable RLS to "make a query work".
@@ -25,7 +25,7 @@ You are working on **Aarogya**, a multi-tenant AI health SaaS marketplace handli
 
 ## Never do this
 
-The full prohibition list is [`01-never-do.md`](.cursor/rules/01-never-do.md). The ones that get caught in review most often:
+The ones that get caught in review most often:
 
 - Writing a `.css` file or an inline `style` prop
 - `any` in TypeScript, or a bare `except:` in Python

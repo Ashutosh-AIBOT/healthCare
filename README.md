@@ -22,7 +22,7 @@ Not a medical device. Does not diagnose or prescribe.
 └── CONTRIBUTING.md   # Branch / commit / PR workflow
 ```
 
-Hidden folders like `.agents/`, `.21st/`, `.claude/`, `.codex/` are **local-only** and gitignored — never push them.
+Cursor/agent folders (`.cursor/`, `.agents/`, `.21st/`, `.claude/`, `.codex/`) stay on your machine only. They are gitignored and never appear on GitHub. The only hidden paths on GitHub are `.gitignore`, `.env.example`, and `.github/workflows/` (CI).
 
 ---
 
@@ -86,7 +86,7 @@ cd frontend && npm run build
 ## Delivery workflow
 
 One feature per branch → implement **backend + matching frontend** → test → commit → PR → merge `main`.  
-See [CONTRIBUTING.md](CONTRIBUTING.md) and `.cursor/rules/80-feature-git-workflow.md`.
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Milestones: [PLAN.md § 20](PLAN.md). Next product slice after current skeleton: **M7 providers**.
 

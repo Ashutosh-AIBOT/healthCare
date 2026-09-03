@@ -8,6 +8,7 @@ from app.models import lab_booking
 from app.models import lab_test
 from app.models import member_medical_profile
 from app.models import member_transfer
+from app.models import nutrition
 from app.models import otp
 from app.models import prescription
 from app.models import provider
@@ -27,6 +28,7 @@ __all__ = [
     "lab_test",
     "member_medical_profile",
     "member_transfer",
+    "nutrition",
     "otp",
     "prescription",
     "provider",

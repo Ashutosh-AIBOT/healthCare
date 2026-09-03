@@ -132,6 +132,8 @@ class Appointment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     events: Mapped[list["AppointmentEvent"]] = relationship(
         back_populates="appointment", cascade="all, delete-orphan"
     )
+    teleconsult: Mapped["TeleconsultSession | None"] = relationship(back_populates="appointment", uselist=False)
+    prescription: Mapped["Prescription | None"] = relationship(back_populates="appointment", uselist=False)
 
     __table_args__ = (
         CheckConstraint("scheduled_end > scheduled_start", name="ck_appointments_time_order"),

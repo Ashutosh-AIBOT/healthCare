@@ -139,7 +139,7 @@ git config --global user.email "Ashutosh-AIBOT@users.noreply.github.com"
 Repo-local overrides (optional):
 
 ```bash
-cd /home/creator/Desktop/IDEA/Ai-health-App
+cd /home/creator/Desktop/IDEA/healthCare/healthCare
 git config user.name "Ashutosh-AIBOT"
 git config user.email "Ashutosh-AIBOT@users.noreply.github.com"
 ```
@@ -149,7 +149,7 @@ git config user.email "Ashutosh-AIBOT@users.noreply.github.com"
 ## 4. Branch workflow (this project)
 
 ```bash
-cd /home/creator/Desktop/IDEA/Ai-health-App
+cd /home/creator/Desktop/IDEA/healthCare/healthCare
 git checkout main
 git pull origin main
 

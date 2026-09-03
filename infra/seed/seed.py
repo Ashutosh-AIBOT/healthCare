@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.core.security import hash_password
 from app.db.session import UserRole, set_rls_bypass
+from app.models.appointment import Appointment, AppointmentEvent, AppointmentStatus
 from app.models.family import Family
 from app.models.family_member import FamilyMember
 from app.models.provider import DoctorDetail, LabDetail, ProviderProfile
@@ -104,6 +105,73 @@ async def ensure_user(db: AsyncSession, spec: dict) -> User:
     if user is not None:
         return user
 
+
+async def ensure_appointments(db: AsyncSession) -> None:
+    demo_user = await db.scalar(select(User).where(User.email == "demo@aarogya.app"))
+    if demo_user is None or demo_user.family_id is None:
+        return
+
+    family = await db.get(Family, demo_user.family_id)
+    if family is None:
+        return
+
+    member = await db.scalar(
+        select(FamilyMember).where(FamilyMember.family_id == family.id, FamilyMember.user_id == demo_user.id)
+    )
+    if member is None:
+        return
+
+    doctor = await db.scalar(select(User).where(User.email == "doctor@aarogya.app"))
+    if doctor is None:
+        return
+
+    profile = await db.scalar(
+        select(ProviderProfile).where(ProviderProfile.user_id == doctor.id, ProviderProfile.provider_type == "doctor")
+    )
+    if profile is None:
+        return
+
+    now = datetime.now(UTC)
+    slots = [
+        (now + timedelta(days=1, hours=10), now + timedelta(days=1, hours=10, minutes=30)),
+        (now + timedelta(days=3, hours=14), now + timedelta(days=3, hours=14, minutes=30)),
+    ]
+
+    for scheduled_start, scheduled_end in slots:
+        existing = await db.scalar(
+            select(Appointment).where(
+                Appointment.family_id == family.id,
+                Appointment.member_id == member.id,
+                Appointment.provider_profile_id == profile.id,
+                Appointment.scheduled_start == scheduled_start,
+            )
+        )
+        if existing is not None:
+            continue
+
+        appointment = Appointment(
+            family_id=family.id,
+            member_id=member.id,
+            provider_profile_id=profile.id,
+            requested_by_user_id=demo_user.id,
+            status=AppointmentStatus.REQUESTED,
+            scheduled_start=scheduled_start,
+            scheduled_end=scheduled_end,
+            fee_paise=profile.consultation_fee_paise,
+        )
+        db.add(appointment)
+        await db.flush()
+
+        db.add(
+            AppointmentEvent(
+                appointment_id=appointment.id,
+                actor_user_id=demo_user.id,
+                actor_role="family",
+                from_status=None,
+                to_status=AppointmentStatus.REQUESTED,
+            )
+        )
+
     user = User(
         email=spec["email"],
         handle=spec["handle"],
@@ -134,7 +202,7 @@ async def ensure_user(db: AsyncSession, spec: dict) -> User:
             FamilyMember(
                 family_id=family.id,
                 user_id=user.id,
-                relation="self",
+                relation="other",
                 is_dependent=False,
                 timezone="Asia/Kolkata",
             )
@@ -220,6 +288,7 @@ async def main() -> None:
         for spec in USERS:
             user = await ensure_user(db, spec)
             print(f"seeded {user.email} ({user.role})")
+        await ensure_appointments(db)
         await set_rls_bypass(db, False)
         await db.commit()
 

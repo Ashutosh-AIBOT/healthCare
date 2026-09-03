@@ -90,7 +90,8 @@ async def get_appointment(
     except AppError as exc:
         if exc.code != "APPOINTMENT_NOT_FOUND":
             raise
-        _require_doctor(current_user)
+        if current_user.role not in ("doctor", "platform_admin"):
+            raise
         await set_rls_bypass(db, True)
         try:
             appointment = await appointment_service.get_for_provider(
@@ -193,7 +194,8 @@ async def cancel_appointment(
     except AppError as exc:
         if exc.code != "APPOINTMENT_NOT_FOUND":
             raise
-        _require_doctor(current_user)
+        if current_user.role not in ("doctor", "platform_admin"):
+            raise
         await set_rls_bypass(db, True)
         try:
             appointment = await appointment_service.cancel_by_provider(

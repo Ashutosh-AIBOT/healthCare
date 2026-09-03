@@ -1,45 +1,83 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { Logo } from "@/components/brand";
-import { EmptyState } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Card, EmptyState } from "@/components/ui/card";
 
 export const metadata: Metadata = {
   title: "Doctor portal",
   robots: { index: false, follow: false },
 };
 
-export default function DoctorShellPage() {
+export default function DoctorDashboardPage() {
   return (
-    <div className="min-h-dvh bg-mist/40">
-      <header className="border-b border-line/60 bg-foam/90">
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
+    <div className="min-h-dvh bg-[linear-gradient(180deg,var(--color-mist)_0%,var(--color-foam)_28%,var(--color-foam)_100%)]">
+      <header className="sticky top-0 z-30 border-b border-line/50 bg-foam/85 backdrop-blur-xl">
+        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-4 md:px-6">
           <Logo href="/doctor" className="text-lg" />
-          <nav className="flex gap-4 text-sm text-muted">
-            <span className="font-medium text-ink">Queue</span>
-            <Link href="/doctor/patients" className="hover:text-ink">
+          <nav className="hidden items-center gap-1 md:flex" aria-label="Doctor">
+            <Link href="/doctor/onboarding" className="rounded-full px-3.5 py-1.5 text-sm font-medium text-muted hover:bg-mist hover:text-ink">
+              Profile
+            </Link>
+            <Link href="/doctor/availability" className="rounded-full px-3.5 py-1.5 text-sm font-medium text-muted hover:bg-mist hover:text-ink">
+              Availability
+            </Link>
+            <Link href="/doctor/appointments" className="rounded-full px-3.5 py-1.5 text-sm font-medium text-muted hover:bg-mist hover:text-ink">
+              Appointments
+            </Link>
+            <Link href="/doctor/patients" className="rounded-full px-3.5 py-1.5 text-sm font-medium text-muted hover:bg-mist hover:text-ink">
               Patients
             </Link>
-            <Link href="/app" className="hover:text-ink">
+            <Link href="/app" className="rounded-full px-3.5 py-1.5 text-sm font-medium text-muted hover:bg-mist hover:text-ink">
               Family app
             </Link>
           </nav>
+          <Button variant="ghost" size="sm">
+            Sign out
+          </Button>
         </div>
       </header>
-      <main className="mx-auto max-w-6xl space-y-6 px-4 py-10">
-        <div>
-          <h1 className="font-display text-3xl font-semibold tracking-tight">Clinician shell</h1>
-          <p className="mt-2 text-sm text-muted">
-            Plan approval queue and consented shares land here in later milestones.
-          </p>
+      <main className="mx-auto max-w-6xl space-y-8 px-4 py-10 md:px-6 md:py-12">
+        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <div>
+            <h1 className="font-display text-3xl font-semibold tracking-tight">Doctor dashboard</h1>
+            <p className="mt-2 text-sm text-muted">Verify your profile, set availability, and manage appointments.</p>
+          </div>
+          <div className="flex gap-3">
+            <Link href="/doctor/onboarding">
+              <Button variant="secondary">Complete profile</Button>
+            </Link>
+            <Link href="/doctor/availability">
+              <Button>Set availability</Button>
+            </Link>
+          </div>
         </div>
+
+        <div className="grid gap-4 md:grid-cols-3">
+          <Card>
+            <p className="text-sm text-muted">Verification status</p>
+            <p className="mt-2 text-2xl font-semibold text-ink">Pending</p>
+            <p className="mt-1 text-sm text-muted">Submit your profile for review.</p>
+          </Card>
+          <Card>
+            <p className="text-sm text-muted">Today&apos;s appointments</p>
+            <p className="mt-2 text-2xl font-semibold text-ink">0</p>
+            <p className="mt-1 text-sm text-muted">Appointments connect in M9.</p>
+          </Card>
+          <Card>
+            <p className="text-sm text-muted">Response rate</p>
+            <p className="mt-2 text-2xl font-semibold text-ink">—</p>
+            <p className="mt-1 text-sm text-muted">Available after first consultation.</p>
+          </Card>
+        </div>
+
         <EmptyState
-          title="No plans awaiting approval"
-          description="When a member with conditions receives an AI plan, it appears here until you approve or reject it."
+          title="Complete your onboarding"
+          description="Add qualifications, specializations, and consultation details so patients can discover you."
           action={
-            <Link href="/register">
+            <Link href="/doctor/onboarding">
               <Button size="sm" variant="secondary">
-                Request clinician access
+                Start onboarding
               </Button>
             </Link>
           }

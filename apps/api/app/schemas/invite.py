@@ -8,7 +8,7 @@ class InviteCreate(BaseModel):
     email: EmailStr
     role: str = Field(default="family_member", max_length=32)
     relation: str | None = Field(default=None, max_length=32)
-    expires_in_hours: int = Field(default=72, gt=0, le=168)
+    expires_in_hours: int = Field(default=14 * 24, gt=0, le=30 * 24)
 
 
 class InviteOut(BaseModel):

@@ -9,23 +9,19 @@ from app.models.family import Family
 from app.models.family_member import FamilyMember
 from app.models.invite import Invite, InviteStatus
 from app.models.member_transfer import MemberTransfer, TransferStatus
-from app.models.user import User, UserRole
+from app.models.user import User
+from app.db.session import UserRole
 from app.schemas.family_member import FamilyMemberCreate
 from app.schemas.invite import InviteCreate
+from tests.helpers_auth import register_verified
 
 
 class TestFamilyCore:
     async def test_create_family_creates_owner_member(self, client):
-        resp = await client.post(
-            "/api/v1/auth/register",
-            json={
-                "email": "owner-family@example.com",
-                "password": "SecurePass1!",
-                "full_name": "Owner",
-            },
+        login = await register_verified(
+            client, email="owner-family@example.com", handle="owner_fam", full_name="Owner"
         )
-        assert resp.status_code == 201
-        token = resp.json()["tokens"]["access_token"]
+        token = login.json()["tokens"]["access_token"]
 
         resp = await client.post(
             "/api/v1/families/",
@@ -44,15 +40,10 @@ class TestFamilyCore:
         assert resp.json()["id"] == data["id"]
 
     async def test_add_and_list_members(self, client, db_app_user):
-        reg = await client.post(
-            "/api/v1/auth/register",
-            json={
-                "email": "fam-member@example.com",
-                "password": "SecurePass1!",
-                "full_name": "Family User",
-            },
+        login = await register_verified(
+            client, email="fam-member@example.com", handle="fam_member", full_name="Family User"
         )
-        token = reg.json()["tokens"]["access_token"]
+        token = login.json()["tokens"]["access_token"]
 
         resp = await client.post(
             "/api/v1/families/",
@@ -79,15 +70,10 @@ class TestFamilyCore:
         assert len(members) >= 1
 
     async def test_update_member(self, client, db_app_user):
-        reg = await client.post(
-            "/api/v1/auth/register",
-            json={
-                "email": "update-member@example.com",
-                "password": "SecurePass1!",
-                "full_name": "Update User",
-            },
+        login = await register_verified(
+            client, email="update-member@example.com", handle="update_mem", full_name="Update User"
         )
-        token = reg.json()["tokens"]["access_token"]
+        token = login.json()["tokens"]["access_token"]
 
         await client.post(
             "/api/v1/families/",
@@ -117,8 +103,20 @@ class TestFamilyCore:
         db_app_user.add_all([family_a, family_b])
         await db_app_user.flush()
 
-        user_a = User(email="a@test.com", password_hash="hash", role=UserRole.FAMILY_OWNER, family_id=family_a.id)
-        user_b = User(email="b@test.com", password_hash="hash", role=UserRole.FAMILY_OWNER, family_id=family_b.id)
+        user_a = User(
+            email="a@test.com",
+            handle="iso_a",
+            password_hash="hash",
+            role=UserRole.FAMILY_OWNER,
+            family_id=family_a.id,
+        )
+        user_b = User(
+            email="b@test.com",
+            handle="iso_b",
+            password_hash="hash",
+            role=UserRole.FAMILY_OWNER,
+            family_id=family_b.id,
+        )
         db_app_user.add_all([user_a, user_b])
         await db_app_user.flush()
 

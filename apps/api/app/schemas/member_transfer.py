@@ -17,6 +17,8 @@ class MemberTransferOut(BaseModel):
     status: str
     requested_by_user_id: uuid.UUID
     confirmed_by_user_id: uuid.UUID | None
+    from_family_confirmed_by: uuid.UUID | None = None
+    to_family_confirmed_by: uuid.UUID | None = None
     completed_at: datetime | None
     created_at: datetime
     updated_at: datetime

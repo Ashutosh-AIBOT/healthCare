@@ -15,7 +15,7 @@ if (HERE.parent / "app").is_dir():
     API_ROOT = HERE.parent
 else:
     # Running from repo: infra/seed/seed.py
-    API_ROOT = HERE.parents[1] / "apps" / "api"
+    API_ROOT = HERE.parents[1] / "backend"
 sys.path.insert(0, str(API_ROOT))
 
 from sqlalchemy import select

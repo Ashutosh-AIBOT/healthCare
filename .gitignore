@@ -12,7 +12,10 @@ dist
 .next
 *.egg-info
 frontend/tsconfig.tsbuildinfo
-apps/web/tsconfig.tsbuildinfo
+backend/**/__pycache__/
+
+# Legacy path (removed) — ignore if leftover local artifacts appear
+apps/
 
 # Python caches
 __pycache__

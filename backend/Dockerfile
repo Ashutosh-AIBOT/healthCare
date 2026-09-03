@@ -4,10 +4,10 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
   && rm -rf /var/lib/apt/lists/*
 
-COPY apps/api/requirements.txt .
+COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY apps/api/ .
+COPY backend/ .
 COPY infra/seed /app/seed
 RUN chmod +x /app/scripts/entrypoint.sh
 

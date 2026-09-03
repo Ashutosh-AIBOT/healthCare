@@ -21,8 +21,8 @@ Every capability ships as **one feature slice**, never a dump of unrelated work.
 
 ## Scope reminders
 
-- Frontend product UI lives in `frontend/` (Next.js). Backend stays under `apps/api/`
+- Frontend product UI lives in `frontend/` (Next.js). Backend stays under `backend/`
 - Marketing UI: Soft Structuralism — brand-first hero, calm clinical tokens; no purple-on-white / cream-terracotta AI clichés
 - Do not push directly to `main`
 - Do not open a PR that mixes unrelated milestones
-- **Never commit or push hidden agent/tooling folders:** `.agents/`, `.21st/`, `.claude/`, `.codex/`, `.cursor/skills/`, or other local IDE skill caches. Only product code (`apps/`, `frontend/`, `infra/`, `docs/`, intentional `.cursor/rules/`). Confirm with `git status` before every commit.
+- **Never commit or push hidden agent/tooling folders:** `.agents/`, `.21st/`, `.claude/`, `.codex/`, `.cursor/skills/`, or other local IDE skill caches. Only product code (`backend/`, `frontend/`, `infra/`, `docs/`, intentional `.cursor/rules/`). Confirm with `git status` before every commit.

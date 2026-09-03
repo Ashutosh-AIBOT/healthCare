@@ -1,12 +1,12 @@
 ---
 description: Tailwind-only styling rules - no CSS files, no inline styles, tokens only
-globs: apps/web/**/*.{ts,tsx,css}
+globs: frontend/**/*.{ts,tsx,css}
 alwaysApply: false
 ---
 
 # Styling: Tailwind utilities only
 
-**Tailwind is the only styling mechanism in this project.** There is exactly one stylesheet, `apps/web/app/globals.css`, and it contains only Tailwind directives plus CSS custom properties that define design tokens. Nothing else.
+**Tailwind is the only styling mechanism in this project.** There is exactly one stylesheet, `frontend/app/globals.css`, and it contains only Tailwind directives plus CSS custom properties that define design tokens. Nothing else.
 
 ## Forbidden
 

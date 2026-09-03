@@ -1,6 +1,6 @@
 ---
 description: FastAPI structure, validation, errors, authorization and async rules
-globs: apps/api/**/*.py
+globs: backend/**/*.py
 alwaysApply: false
 ---
 

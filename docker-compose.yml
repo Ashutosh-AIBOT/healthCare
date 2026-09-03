@@ -87,7 +87,7 @@ services:
   api:
     build:
       context: .
-      dockerfile: apps/api/Dockerfile
+      dockerfile: backend/Dockerfile
     ports:
       - "8000:8000"
     environment:
@@ -142,7 +142,7 @@ services:
   worker:
     build:
       context: .
-      dockerfile: apps/api/Dockerfile
+      dockerfile: backend/Dockerfile
     command: ["celery", "-A", "app.tasks.celery_app", "worker", "--loglevel=info"]
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-aarogya}:${POSTGRES_PASSWORD:-aarogya}@postgres:5432/${POSTGRES_DB:-aarogya}
@@ -158,7 +158,7 @@ services:
   beat:
     build:
       context: .
-      dockerfile: apps/api/Dockerfile
+      dockerfile: backend/Dockerfile
     command: ["celery", "-A", "app.tasks.celery_app", "beat", "--loglevel=info"]
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-aarogya}:${POSTGRES_PASSWORD:-aarogya}@postgres:5432/${POSTGRES_DB:-aarogya}

@@ -7,7 +7,7 @@ alwaysApply: true
 
 ## Styling
 
-- Never create a `.css`, `.scss`, `.sass`, `.less` or `.module.css` file. The only stylesheet in the repo is `apps/web/app/globals.css`, and it may contain **only** Tailwind directives and CSS custom properties defining design tokens.
+- Never create a `.css`, `.scss`, `.sass`, `.less` or `.module.css` file. The only stylesheet in the repo is `frontend/app/globals.css`, and it may contain **only** Tailwind directives and CSS custom properties defining design tokens.
 - Never use `style={{ ... }}`, `<style>` tags, styled-components, emotion, or any CSS-in-JS.
 - Never write a raw hex colour, `rgb()`, or arbitrary spacing value in a component. Use tokens: `bg-primary`, `text-muted-foreground`, `p-4`.
 - Never use arbitrary Tailwind values (`w-[437px]`, `text-[13px]`) unless the value is genuinely impossible on the scale, and then add a comment explaining why.

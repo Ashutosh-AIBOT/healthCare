@@ -97,12 +97,15 @@ services:
 
   web:
     build:
-      context: ./apps/web
+      context: ./frontend
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8080
+      API_INTERNAL_URL: http://api:8000
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
     depends_on:
       - api
     networks:

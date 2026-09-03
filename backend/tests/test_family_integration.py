@@ -39,7 +39,7 @@ class TestFamilyCore:
         assert resp.status_code == 200
         assert resp.json()["id"] == data["id"]
 
-    async def test_add_and_list_members(self, client, db_app_user):
+    async def test_add_and_list_members(self, client):
         login = await register_verified(
             client, email="fam-member@example.com", handle="fam_member", full_name="Family User"
         )
@@ -69,7 +69,7 @@ class TestFamilyCore:
         members = resp.json()
         assert len(members) >= 1
 
-    async def test_update_member(self, client, db_app_user):
+    async def test_update_member(self, client):
         login = await register_verified(
             client, email="update-member@example.com", handle="update_mem", full_name="Update User"
         )

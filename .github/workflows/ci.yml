@@ -1,8 +1,71 @@
 name: CI
-on: [push, pull_request]
+
+on:
+  push:
+    branches: [main, master, "feat/**", "chore/**", "fix/**"]
+  pull_request:
+
 jobs:
-  check:
+  api:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: aarogya
+          POSTGRES_PASSWORD: aarogya
+          POSTGRES_DB: aarogya
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aarogya"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
     steps:
       - uses: actions/checkout@v4
-      - run: echo "CI placeholder"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/api/requirements.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Migrate
+        env:
+          DATABASE_URL: postgresql+asyncpg://aarogya:aarogya@localhost:5432/aarogya
+          SECRET_KEY: ci-secret
+          OTP_DEV_MODE: "true"
+        run: alembic upgrade head
+      - name: Test
+        env:
+          DATABASE_URL: postgresql+asyncpg://aarogya:aarogya@localhost:5432/aarogya
+          SECRET_KEY: ci-secret
+          OTP_DEV_MODE: "true"
+          REDIS_URL: redis://localhost:6379/0
+        run: pytest -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install and build
+        run: |
+          npm ci
+          npm run build
+          npm run budget

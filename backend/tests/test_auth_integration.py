@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 
 from app.core.config import settings
-from app.db.session import set_tenant_context
+from app.db.session import set_rls_bypass, set_tenant_context
 from app.models.family import Family
 from app.models.user import Session, User
 from tests.helpers_auth import register_verified
@@ -104,6 +104,7 @@ class TestAuthFlow:
 
 class TestCrossTenantIsolation:
     async def test_sessions_scoped_by_family(self, db_app_user):
+        await set_rls_bypass(db_app_user, True)
         family_a = Family(name="Family A")
         family_b = Family(name="Family B")
         db_app_user.add_all([family_a, family_b])
@@ -144,6 +145,7 @@ class TestCrossTenantIsolation:
         db_app_user.add(session_b)
         await db_app_user.flush()
 
+        await set_rls_bypass(db_app_user, False)
         await set_tenant_context(db_app_user, family_a.id)
         result = await db_app_user.execute(select(Session))
         sessions = result.scalars().all()

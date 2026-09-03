@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy import select
 
 from app.core.errors import AppError
-from app.db.session import set_tenant_context
+from app.db.session import set_rls_bypass, set_tenant_context
 from app.models.family import Family
 from app.models.family_member import FamilyMember
 from app.models.invite import Invite, InviteStatus
@@ -39,7 +39,7 @@ class TestFamilyCore:
         assert resp.status_code == 200
         assert resp.json()["id"] == data["id"]
 
-    async def test_add_and_list_members(self, client, db_app_user):
+    async def test_add_and_list_members(self, client):
         login = await register_verified(
             client, email="fam-member@example.com", handle="fam_member", full_name="Family User"
         )
@@ -54,7 +54,7 @@ class TestFamilyCore:
 
         resp = await client.post(
             "/api/v1/families/members",
-            json={"relation": "son", "date_of_birth": "2010-01-01", "gender": "male", "blood_group": "o_pos"},
+            json={"relation": "son", "date_of_birth": "1998-01-01", "gender": "male", "blood_group": "o_pos"},
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 201
@@ -69,7 +69,7 @@ class TestFamilyCore:
         members = resp.json()
         assert len(members) >= 1
 
-    async def test_update_member(self, client, db_app_user):
+    async def test_update_member(self, client):
         login = await register_verified(
             client, email="update-member@example.com", handle="update_mem", full_name="Update User"
         )
@@ -83,7 +83,7 @@ class TestFamilyCore:
 
         resp = await client.post(
             "/api/v1/families/members",
-            json={"relation": "daughter", "date_of_birth": "2012-01-01", "gender": "female"},
+            json={"relation": "daughter", "date_of_birth": "1995-01-01", "gender": "female"},
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 201
@@ -97,7 +97,8 @@ class TestFamilyCore:
         assert resp.status_code == 200
         assert resp.json()["blood_group"] == "a_pos"
 
-    async def test_cross_family_isolation(self, client, db_app_user):
+    async def test_cross_family_isolation(self, db_app_user):
+        await set_rls_bypass(db_app_user, True)
         family_a = Family(name="Family A")
         family_b = Family(name="Family B")
         db_app_user.add_all([family_a, family_b])
@@ -125,6 +126,7 @@ class TestFamilyCore:
         db_app_user.add_all([member_a, member_b])
         await db_app_user.flush()
 
+        await set_rls_bypass(db_app_user, False)
         await set_tenant_context(db_app_user, family_a.id)
         result = await db_app_user.execute(select(FamilyMember).where(FamilyMember.family_id == family_a.id))
         members_a = result.scalars().all()

@@ -1,4 +1,5 @@
-import asyncio
+from urllib.parse import urlparse
+
 import pytest
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy import text
@@ -6,16 +7,19 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
+from app.core.ratelimit import close_redis
 from app.db.session import get_db
 from app.main import app
 
 
-@pytest.fixture(scope="session")
-def event_loop():
-    policy = asyncio.get_event_loop_policy()
-    loop = policy.new_event_loop()
-    yield loop
-    loop.close()
+def _app_user_database_url() -> str:
+    """Same host/db as DATABASE_URL, but the non-superuser used for RLS checks."""
+    raw = settings.database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+    parsed = urlparse(raw)
+    host = parsed.hostname or "localhost"
+    port = parsed.port or 5432
+    db = (parsed.path or "/aarogya").lstrip("/") or "aarogya"
+    return f"postgresql+asyncpg://app_user:app_pass@{host}:{port}/{db}"
 
 
 @pytest.fixture(scope="session")
@@ -25,21 +29,25 @@ async def engine():
     await eng.dispose()
 
 
-@pytest.fixture(scope="session")
-async def app_user_engine():
-    eng = create_async_engine(
-        "postgresql+asyncpg://app_user:app_pass@postgres:5432/aarogya",
-        echo=False,
-        pool_pre_ping=True,
-        poolclass=NullPool,
-    )
-    yield eng
-    await eng.dispose()
-
-
 @pytest.fixture(scope="session", autouse=True)
 async def clean_db(engine):
-    async with engine.connect() as conn:
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(
+                """
+                DO $$
+                BEGIN
+                  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'app_user') THEN
+                    CREATE ROLE app_user LOGIN PASSWORD 'app_pass' NOSUPERUSER NOBYPASSRLS;
+                  END IF;
+                END $$;
+                """
+            )
+        )
+        await conn.execute(text("GRANT USAGE ON SCHEMA public TO app_user"))
+        await conn.execute(text("GRANT CONNECT ON DATABASE aarogya TO app_user"))
+        await conn.execute(text("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_user"))
+        await conn.execute(text("GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO app_user"))
         await conn.execute(
             text(
                 "TRUNCATE TABLE backup_codes, totp_secrets, consents, consent_documents, "
@@ -49,7 +57,6 @@ async def clean_db(engine):
                 "family_members, users, families RESTART IDENTITY CASCADE"
             )
         )
-        # M4–M6 tables (ignore if migration 012 not applied yet)
         await conn.execute(
             text(
                 "DO $$ BEGIN "
@@ -58,7 +65,20 @@ async def clean_db(engine):
                 "EXCEPTION WHEN undefined_table THEN NULL; END $$"
             )
         )
-        await conn.commit()
+    yield
+    await close_redis()
+
+
+@pytest.fixture(scope="session")
+async def app_user_engine(clean_db):
+    eng = create_async_engine(
+        _app_user_database_url(),
+        echo=False,
+        pool_pre_ping=True,
+        poolclass=NullPool,
+    )
+    yield eng
+    await eng.dispose()
 
 
 @pytest.fixture

@@ -111,6 +111,7 @@ class SearchService:
             query = query.where(func.lower(ProviderProfile.city) == filters.city.lower())
 
         if filters.pincode:
+            query = query.outerjoin(LabDetail, LabDetail.provider_profile_id == ProviderProfile.id)
             query = query.where(
                 or_(
                     func.lower(ProviderProfile.pincode) == filters.pincode.lower(),

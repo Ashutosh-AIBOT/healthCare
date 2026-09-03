@@ -24,26 +24,26 @@ async def add_member(
     return await family_service.add_member(db, current_user.family_id, payload)
 
 
-@router.get("/members", response_model=list[FamilyMemberOut])
+@router.get("/members")
 async def list_members(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-) -> list[FamilyMemberOut]:
+) -> list[dict]:
     if current_user.family_id is None:
         raise AppError(code="NO_FAMILY", status=400, detail="User does not belong to a family.")
-    return await family_service.list_members(db, current_user.family_id)
+    return await family_service.list_members(db, current_user.family_id, viewer_user_id=current_user.id)
 
 
-@router.get("/members/{member_id}", response_model=FamilyMemberOut)
+@router.get("/members/{member_id}")
 async def get_member(
     member_id: uuid.UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-) -> FamilyMemberOut:
+) -> dict:
     if current_user.family_id is None:
         raise AppError(code="NO_FAMILY", status=400, detail="User does not belong to a family.")
-    member = await family_service.get_member(db, member_id)
-    if member is None or member.family_id != current_user.family_id:
+    member = await family_service.get_member(db, member_id, viewer_user_id=current_user.id)
+    if member is None or str(member.get("family_id")) != str(current_user.family_id):
         raise AppError(code="NOT_FOUND", status=404, detail="Member not found.")
     return member
 

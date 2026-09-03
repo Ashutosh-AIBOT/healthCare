@@ -52,10 +52,13 @@ async def _make_profile(db, provider_type: str, city: str | None = None, pincode
             )
         )
     else:
+        serviceable = pincode or "560001,560002"
+        if pincode and pincode not in serviceable:
+            serviceable = f"{pincode},{serviceable}"
         db.add(
             LabDetail(
                 provider_profile_id=profile.id,
-                serviceable_pincodes=pincode or "560001,560002",
+                serviceable_pincodes=serviceable,
             )
         )
     await db.flush()

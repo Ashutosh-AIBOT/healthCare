@@ -21,7 +21,7 @@ Four sides, one platform:
 
 | Layer | Choice | Why |
 |---|---|---|
-| Frontend | Next.js 15 App Router, TypeScript, Tailwind, shadcn/ui | SSR/ISR for SEO-critical public pages; one styling system; accessible primitives |
+| Frontend | **`frontend/`** — Next.js 15 App Router, TypeScript, Tailwind | Marketing SEO, auth BFF, family app shells. Soft Structuralism for marketing. |
 | Backend | FastAPI, SQLAlchemy 2 async, Pydantic v2 | Async throughout, strict validation, OpenAPI as the frontend contract |
 | Database | Postgres 16 + pgvector, RLS | One source of truth for records and embeddings; tenant isolation in the database, not just the app |
 | Cache / queue | Redis | Cache, rate limits, semantic cache, locks, Celery broker, pub/sub fan-out |

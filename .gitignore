@@ -10,3 +10,5 @@ __pycache__
 .ruff_cache
 dist
 .next
+frontend/tsconfig.tsbuildinfo
+apps/web/tsconfig.tsbuildinfo

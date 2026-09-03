@@ -13,7 +13,7 @@ from app.services.search_service import search_service
 from tests.helpers_auth import register_verified
 
 
-def _make_profile(db, provider_type: str, city: str | None = None, pincode: str | None = None) -> ProviderProfile:
+async def _make_profile(db, provider_type: str, city: str | None = None, pincode: str | None = None) -> ProviderProfile:
     user_id = uuid.uuid4()
     user = User(
         id=user_id,
@@ -65,8 +65,8 @@ def _make_profile(db, provider_type: str, city: str | None = None, pincode: str 
 class TestSearchService:
     async def test_search_by_city(self, db):
         await set_rls_bypass(db, True)
-        _make_profile(db, "doctor", city="Bangalore")
-        _make_profile(db, "doctor", city="Delhi")
+        await _make_profile(db, "doctor", city="Bangalore")
+        await _make_profile(db, "doctor", city="Delhi")
         await set_rls_bypass(db, False)
 
         filters = ProviderSearchFilters(city="Bangalore", provider_type="doctor")
@@ -76,7 +76,7 @@ class TestSearchService:
 
     async def test_search_by_specialization(self, db):
         await set_rls_bypass(db, True)
-        _make_profile(db, "doctor", city="Bangalore")
+        await _make_profile(db, "doctor", city="Bangalore")
         await set_rls_bypass(db, False)
 
         filters = ProviderSearchFilters(specialization="Cardiology", provider_type="doctor")
@@ -86,8 +86,8 @@ class TestSearchService:
 
     async def test_search_lab_by_pincode(self, db):
         await set_rls_bypass(db, True)
-        _make_profile(db, "lab", pincode="560001")
-        _make_profile(db, "lab", pincode="110001")
+        await _make_profile(db, "lab", pincode="560001")
+        await _make_profile(db, "lab", pincode="110001")
         await set_rls_bypass(db, False)
 
         filters = ProviderSearchFilters(pincode="560001", provider_type="lab")
@@ -97,7 +97,7 @@ class TestSearchService:
 
     async def test_verified_only_filter(self, db):
         await set_rls_bypass(db, True)
-        profile = _make_profile(db, "doctor", city="Bangalore")
+        profile = await _make_profile(db, "doctor", city="Bangalore")
         await set_rls_bypass(db, False)
 
         profile.verification_status = "pending"
@@ -111,7 +111,7 @@ class TestSearchService:
 
     async def test_text_search(self, db):
         await set_rls_bypass(db, True)
-        _make_profile(db, "doctor", city="Bangalore")
+        await _make_profile(db, "doctor", city="Bangalore")
         await set_rls_bypass(db, False)
 
         filters = ProviderSearchFilters(q="Cardiology", provider_type="doctor")

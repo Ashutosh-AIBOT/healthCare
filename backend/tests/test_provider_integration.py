@@ -29,7 +29,7 @@ class TestProviderPlatform:
         assert data["provider_type"] == "doctor"
         assert data["display_name"] == "Dr Create"
         assert data["verification_status"] == "unverified"
-        assert data["slug"] == "doctor_create"
+        assert data["slug"] == "dr-create"
 
     async def test_lab_can_create_profile(self, client):
         login = await register_verified(
@@ -45,7 +45,7 @@ class TestProviderPlatform:
         assert resp.status_code == 201
         data = resp.json()
         assert data["provider_type"] == "lab"
-        assert data["slug"] == "lab_create"
+        assert data["slug"] == "lab-create"
 
     async def test_duplicate_profile_returns_409(self, client):
         login = await register_verified(

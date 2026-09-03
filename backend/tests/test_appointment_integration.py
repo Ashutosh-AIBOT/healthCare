@@ -14,6 +14,7 @@ import pytest
 from sqlalchemy import select
 
 from app.core.config import settings
+from app.core.security import create_access_token
 from app.db.session import set_rls_bypass, set_tenant_context
 from app.models.appointment import Appointment, AppointmentStatus
 from app.models.family import Family
@@ -286,13 +287,7 @@ class TestAppointmentStateMachine:
         assert book.status_code == 201, book.text
         appt_id = book.json()["id"]
 
-        doctor_login = await register_verified(
-            client,
-            email=doctor_user.email,
-            handle=f"life_doc_login_{uuid.uuid4().hex[:8]}",
-            full_name="Dr Life",
-        )
-        doctor_token = doctor_login.json()["tokens"]["access_token"]
+        doctor_token = create_access_token(doctor_user.id, doctor_user.role)
 
         accept = await client.post(
             f"/api/v1/appointments/{appt_id}/accept",
@@ -348,13 +343,7 @@ class TestAppointmentStateMachine:
         doctor_user, profile = await _make_verified_doctor(db, slug_suffix="bad")
         await set_rls_bypass(db, False)
 
-        doctor_login = await register_verified(
-            client,
-            email=doctor_user.email,
-            handle=f"bad_doc_login_{uuid.uuid4().hex[:8]}",
-            full_name="Dr Bad",
-        )
-        doctor_token = doctor_login.json()["tokens"]["access_token"]
+        doctor_token = create_access_token(doctor_user.id, doctor_user.role)
 
         start, end = _future_window(hours=7)
         book = await client.post(
@@ -424,12 +413,12 @@ class TestAppointmentStateMachine:
 
 
 class TestAppointmentRLS:
-    async def test_other_family_cannot_see_appointments(self, client, db, db_app_user):
-        await set_rls_bypass(db, True)
+    async def test_other_family_cannot_see_appointments(self, db_app_user):
+        await set_rls_bypass(db_app_user, True)
         family_a = Family(name="Family A")
         family_b = Family(name="Family B")
-        db.add_all([family_a, family_b])
-        await db.flush()
+        db_app_user.add_all([family_a, family_b])
+        await db_app_user.flush()
 
         user_a = User(
             email="rls-a@example.com",
@@ -454,8 +443,8 @@ class TestAppointmentRLS:
             role="doctor",
             is_verified=True,
         )
-        db.add_all([user_a, user_b, doctor_user])
-        await db.flush()
+        db_app_user.add_all([user_a, user_b, doctor_user])
+        await db_app_user.flush()
         profile = ProviderProfile(
             user_id=doctor_user.id,
             provider_type="doctor",
@@ -465,12 +454,12 @@ class TestAppointmentRLS:
             is_active=True,
             consultation_fee_paise=50000,
         )
-        db.add(profile)
-        await db.flush()
-        db.add(DoctorDetail(provider_profile_id=profile.id, specializations="General Medicine"))
+        db_app_user.add(profile)
+        await db_app_user.flush()
+        db_app_user.add(DoctorDetail(provider_profile_id=profile.id, specializations="General Medicine"))
         member_a = FamilyMember(family_id=family_a.id, user_id=user_a.id, is_dependent=False, timezone="Asia/Kolkata", relation="other")
-        db.add(member_a)
-        await db.flush()
+        db_app_user.add(member_a)
+        await db_app_user.flush()
 
         start, end = _future_window(hours=9)
         appointment = Appointment(
@@ -482,10 +471,10 @@ class TestAppointmentRLS:
             scheduled_end=end,
             status=AppointmentStatus.REQUESTED,
         )
-        db.add(appointment)
-        await db.flush()
+        db_app_user.add(appointment)
+        await db_app_user.flush()
         appt_id = appointment.id
-        await set_rls_bypass(db, False)
+        await set_rls_bypass(db_app_user, False)
 
         await set_tenant_context(db_app_user, family_a.id)
         result = await db_app_user.execute(select(Appointment).where(Appointment.id == appt_id))
@@ -497,13 +486,7 @@ class TestAppointmentRLS:
 
     async def test_provider_scoped_list_returns_own_appointments(self, client, db):
         doctor = await _make_verified_doctor(db, slug_suffix="listdoc")
-        doctor_login = await register_verified(
-            client,
-            email=doctor[0].email,
-            handle=f"list_doc_login_{uuid.uuid4().hex[:8]}",
-            full_name="Dr List",
-        )
-        doctor_token = doctor_login.json()["tokens"]["access_token"]
+        doctor_token = create_access_token(doctor[0].id, doctor[0].role)
 
         resp = await client.get(
             "/api/v1/appointments?role=provider",

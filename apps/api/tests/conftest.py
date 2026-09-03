@@ -40,7 +40,24 @@ async def app_user_engine():
 @pytest.fixture(scope="session", autouse=True)
 async def clean_db(engine):
     async with engine.connect() as conn:
-        await conn.execute(text("TRUNCATE TABLE sessions, otp_codes, users, families RESTART IDENTITY CASCADE"))
+        await conn.execute(
+            text(
+                "TRUNCATE TABLE backup_codes, totp_secrets, consents, consent_documents, "
+                "sessions, otp_codes, consent_access_logs, member_claims, member_visibility_grants, "
+                "document_chunks, lab_report_values, documents, jobs, "
+                "member_transfers, member_medical_profiles, invites, "
+                "family_members, users, families RESTART IDENTITY CASCADE"
+            )
+        )
+        # M4–M6 tables (ignore if migration 012 not applied yet)
+        await conn.execute(
+            text(
+                "DO $$ BEGIN "
+                "TRUNCATE TABLE document_chunks, lab_report_values, documents, jobs "
+                "RESTART IDENTITY CASCADE; "
+                "EXCEPTION WHEN undefined_table THEN NULL; END $$"
+            )
+        )
         await conn.commit()
 
 

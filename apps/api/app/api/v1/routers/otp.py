@@ -3,8 +3,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import get_db
-from app.schemas.otp import SendOtpRequest, VerifyOtpRequest, OtpResponse
+from app.db.session import get_db
+from app.schemas.otp import OtpResponse, SendOtpRequest, VerifyOtpRequest
 from app.services.otp_service import otp_service
 
 router = APIRouter(prefix="/otp", tags=["otp"])

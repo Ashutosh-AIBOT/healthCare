@@ -12,6 +12,7 @@ from app.schemas.provider import (
     DoctorAvailabilityCreate,
     DoctorAvailabilityOut,
     DoctorAvailabilityUpdate,
+    DoctorDetailUpdate,
     LabDetailCreate,
     LabDetailUpdate,
     ProviderClaimCreate,

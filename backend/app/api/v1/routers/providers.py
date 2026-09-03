@@ -10,13 +10,15 @@ from app.schemas.provider import (
     DoctorAvailabilityCreate,
     DoctorAvailabilityOut,
     DoctorAvailabilityUpdate,
+    DoctorDetailCreate,
+    DoctorDetailUpdate,
     LabDetailCreate,
     LabDetailUpdate,
     ProviderClaimCreate,
     ProviderClaimOut,
     ProviderProfileCreate,
-    ProviderProfileUpdate,
     ProviderProfileOut,
+    ProviderProfileUpdate,
 )
 from app.services.provider_service import provider_service
 

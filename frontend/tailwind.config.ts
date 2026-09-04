@@ -18,6 +18,15 @@ const config: Config = {
           soft: "var(--color-primary-soft)",
         },
         apricot: "var(--color-apricot)",
+        lime: {
+          DEFAULT: "var(--color-lime)",
+          ink: "var(--color-lime-ink)",
+        },
+        blush: "var(--color-blush)",
+        charcoal: {
+          DEFAULT: "var(--color-charcoal)",
+          foreground: "var(--color-charcoal-foreground)",
+        },
         healthy: {
           DEFAULT: "var(--color-healthy)",
           excellent: "var(--color-healthy-excellent)",
@@ -39,15 +48,17 @@ const config: Config = {
         DEFAULT: "var(--radius-md)",
         md: "var(--radius-md)",
         lg: "var(--radius-lg)",
-        "2xl": "1rem",
-        "3xl": "1.5rem",
-        "4xl": "2rem",
+        xl: "var(--radius-xl)",
+        "2xl": "1.25rem",
+        "3xl": "1.75rem",
+        "4xl": "2.25rem",
         full: "var(--radius-full)",
       },
       boxShadow: {
         ambient: "var(--shadow-ambient)",
         lift: "var(--shadow-lift)",
         hairline: "var(--shadow-hairline)",
+        card: "var(--shadow-card)",
       },
       transitionTimingFunction: {
         soft: "cubic-bezier(0.32, 0.72, 0, 1)",

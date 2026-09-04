@@ -60,6 +60,14 @@ async def clean_db(engine):
         await conn.execute(
             text(
                 "DO $$ BEGIN "
+                "TRUNCATE TABLE provider_verification_audit_logs "
+                "RESTART IDENTITY CASCADE; "
+                "EXCEPTION WHEN undefined_table THEN NULL; END $$"
+            )
+        )
+        await conn.execute(
+            text(
+                "DO $$ BEGIN "
                 "TRUNCATE TABLE document_chunks, lab_report_values, documents, jobs "
                 "RESTART IDENTITY CASCADE; "
                 "EXCEPTION WHEN undefined_table THEN NULL; END $$"

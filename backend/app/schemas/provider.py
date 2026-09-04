@@ -137,3 +137,21 @@ class ProviderProfileOut(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class ProviderRejectRequest(BaseModel):
+    reason: str = Field(..., min_length=3, max_length=1000)
+
+
+class ProviderVerificationAuditLogOut(BaseModel):
+    id: uuid.UUID
+    provider_profile_id: uuid.UUID
+    actor_user_id: uuid.UUID | None
+    action: str
+    previous_status: str | None
+    new_status: str | None
+    reason: str | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}

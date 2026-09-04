@@ -25,6 +25,13 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     family_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("families.id", ondelete="SET NULL"), index=True, nullable=True
     )
+    is_suspended: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    suspended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    suspended_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    suspended_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     family_memberships: Mapped[list["FamilyMember"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
@@ -56,10 +63,11 @@ class Session(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 class ConsentDocument(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "consent_documents"
 
-    consent_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    consent_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     version: Mapped[str] = mapped_column(String(32), nullable=False)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     body_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
 
 class Consent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -68,9 +76,10 @@ class Consent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
     )
-    consent_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    consent_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     version: Mapped[str] = mapped_column(String(32), nullable=False)
     accepted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="consents")
 

@@ -50,7 +50,7 @@ async def clean_db(engine):
         await conn.execute(text("GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO app_user"))
         await conn.execute(
             text(
-                "TRUNCATE TABLE backup_codes, totp_secrets, consents, consent_documents, "
+                "TRUNCATE TABLE ai_messages, ai_conversations, backup_codes, totp_secrets, consents, consent_documents, "
                 "sessions, otp_codes, consent_access_logs, member_claims, member_visibility_grants, "
                 "document_chunks, lab_report_values, documents, jobs, "
                 "member_transfers, member_medical_profiles, invites, "

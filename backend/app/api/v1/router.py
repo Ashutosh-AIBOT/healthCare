@@ -2,7 +2,9 @@ from fastapi import APIRouter
 
 from app.api.v1.routers import (
     admin,
+    agency,
     ai,
+    ai_chat,
     auth,
     consent,
     dashboard,
@@ -11,6 +13,8 @@ from app.api.v1.routers import (
     fitness,
     invites,
     members,
+    messaging,
+    notifications_ws,
     otp,
     profiles,
     providers,
@@ -34,7 +38,12 @@ api_router.include_router(providers.router)
 api_router.include_router(search.router)
 api_router.include_router(documents.router)
 api_router.include_router(ai.router)
+api_router.include_router(ai_chat.router)
 api_router.include_router(consent.router)
 api_router.include_router(fitness.router)
 api_router.include_router(seo.router)
 api_router.include_router(dashboard.router)
+api_router.include_router(messaging.router)
+api_router.include_router(agency.router)
+
+ws_router = notifications_ws.router

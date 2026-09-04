@@ -66,3 +66,11 @@ class UserRole:
     LAB_ADMIN = "lab_admin"
     LAB_STAFF = "lab_staff"
     PLATFORM_ADMIN = "platform_admin"
+
+async def set_user_context(session: AsyncSession, user_id: uuid.UUID | None) -> None:
+    """Set the per-transaction user_id GUC for user-scoped RLS (messaging, notifications)."""
+    if user_id is None:
+        await session.execute(text("SELECT set_config('app.user_id', '', true)"))
+    else:
+        uid = str(uuid.UUID(str(user_id)))
+        await session.execute(text("SELECT set_config('app.user_id', :uid, true)"), {"uid": uid})

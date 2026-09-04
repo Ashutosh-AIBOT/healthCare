@@ -33,6 +33,7 @@ from app.models.teleconsult import TeleconsultSession, TeleconsultStatus
 from app.models.user import Consent, ConsentDocument, SystemSetting, User
 from app.models.workout import WorkoutPlan, WorkoutSession, WorkoutExercise
 from app.models.review import Review, ReviewReply
+from app.models.notification import Notification, NotificationPreference
 
 DEMO_PASSWORD = "Demo@1234"
 CONSENT_VERSION = "2026-09-01"
@@ -495,7 +496,47 @@ async def ensure_reviews(db: AsyncSession) -> None:
             author_user_id=doctor.id,
             body="Thank you for your kind words!",
         )
+        )
+
+
+async def ensure_notifications(db: AsyncSession) -> None:
+    demo_user = await db.scalar(select(User).where(User.email == "demo@aarogya.app"))
+    if demo_user is None:
+        return
+
+    existing = await db.scalar(
+        select(NotificationPreference).where(NotificationPreference.user_id == demo_user.id)
     )
+    if existing is None:
+        db.add(
+            NotificationPreference(
+                user_id=demo_user.id,
+                channel_in_app=1,
+                channel_email=1,
+                channel_sms=0,
+                channel_push=0,
+                quiet_hours_start="22:00",
+                quiet_hours_end="07:00",
+                quiet_hours_timezone="Asia/Kolkata",
+            )
+        )
+
+    existing_notif = await db.scalar(
+        select(Notification).where(
+            Notification.user_id == demo_user.id,
+            Notification.subject == "Welcome to Aarogya",
+        )
+    )
+    if existing_notif is None:
+        db.add(
+            Notification(
+                user_id=demo_user.id,
+                channel="in_app",
+                subject="Welcome to Aarogya",
+                body="Your account is ready. No PHI here.",
+                status="pending",
+            )
+        )
 
 
 async def main() -> None:
@@ -518,6 +559,7 @@ async def main() -> None:
         await ensure_lab_tests(db)
         await ensure_workout(db)
         await ensure_reviews(db)
+        await ensure_notifications(db)
         await set_rls_bypass(db, False)
         await db.commit()
 

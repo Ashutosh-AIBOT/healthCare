@@ -5,20 +5,29 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        paper: "var(--color-paper)",
         ink: "var(--color-ink)",
         mist: "var(--color-mist)",
         foam: "var(--color-foam)",
+        sunken: "var(--color-sunken)",
+        line: "var(--color-line)",
+        surface: "var(--color-surface)",
         primary: {
           DEFAULT: "var(--color-primary)",
           foreground: "var(--color-primary-foreground)",
           soft: "var(--color-primary-soft)",
         },
-        healthy: "var(--color-healthy)",
+        apricot: "var(--color-apricot)",
+        healthy: {
+          DEFAULT: "var(--color-healthy)",
+          excellent: "var(--color-healthy-excellent)",
+          good: "var(--color-healthy-good)",
+        },
         watch: "var(--color-watch)",
         critical: "var(--color-critical)",
         muted: "var(--color-muted)",
-        line: "var(--color-line)",
-        surface: "var(--color-surface)",
+        doctor: "var(--color-doctor)",
+        agency: "var(--color-agency)",
       },
       fontFamily: {
         display: ["var(--font-display)", "Georgia", "serif"],
@@ -26,13 +35,19 @@ const config: Config = {
         mono: ["var(--font-mono)", "ui-monospace", "monospace"],
       },
       borderRadius: {
+        sm: "var(--radius-sm)",
+        DEFAULT: "var(--radius-md)",
+        md: "var(--radius-md)",
+        lg: "var(--radius-lg)",
         "2xl": "1rem",
         "3xl": "1.5rem",
         "4xl": "2rem",
+        full: "var(--radius-full)",
       },
       boxShadow: {
         ambient: "var(--shadow-ambient)",
         lift: "var(--shadow-lift)",
+        hairline: "var(--shadow-hairline)",
       },
       transitionTimingFunction: {
         soft: "cubic-bezier(0.32, 0.72, 0, 1)",

@@ -30,6 +30,7 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     sessions: Mapped[list["Session"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     consents: Mapped[list["Consent"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    locale: Mapped[str] = mapped_column(String(8), default="en", nullable=False)
 
 
 class Session(UUIDPrimaryKeyMixin, TimestampMixin, Base):

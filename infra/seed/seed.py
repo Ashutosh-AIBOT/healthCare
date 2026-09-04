@@ -32,6 +32,7 @@ from app.models.provider import DoctorDetail, LabDetail, ProviderProfile
 from app.models.teleconsult import TeleconsultSession, TeleconsultStatus
 from app.models.user import Consent, ConsentDocument, SystemSetting, User
 from app.models.workout import WorkoutPlan, WorkoutSession, WorkoutExercise
+from app.models.review import Review, ReviewReply
 
 DEMO_PASSWORD = "Demo@1234"
 CONSENT_VERSION = "2026-09-01"
@@ -438,6 +439,62 @@ async def ensure_workout(db: AsyncSession) -> None:
             name="Brisk Walking",
             duration_seconds=1800,
         )
+        )
+
+
+async def ensure_reviews(db: AsyncSession) -> None:
+    demo_user = await db.scalar(select(User).where(User.email == "demo@aarogya.app"))
+    if demo_user is None or demo_user.family_id is None:
+        return
+
+    family = await db.get(Family, demo_user.family_id)
+    if family is None:
+        return
+
+    member = await db.scalar(
+        select(FamilyMember).where(FamilyMember.family_id == family.id, FamilyMember.user_id == demo_user.id)
+    )
+    if member is None:
+        return
+
+    doctor = await db.scalar(select(User).where(User.email == "doctor@aarogya.app"))
+    if doctor is None:
+        return
+
+    profile = await db.scalar(
+        select(ProviderProfile).where(ProviderProfile.user_id == doctor.id, ProviderProfile.provider_type == "doctor")
+    )
+    if profile is None:
+        return
+
+    existing = await db.scalar(
+        select(Review).where(
+            Review.provider_profile_id == profile.id,
+            Review.member_id == member.id,
+        )
+    )
+    if existing is not None:
+        return
+
+    review = Review(
+        provider_profile_id=profile.id,
+        appointment_id=None,
+        member_id=member.id,
+        author_user_id=demo_user.id,
+        rating=5,
+        title="Great service",
+        body="Very professional and caring",
+        status=ReviewStatus.APPROVED,
+    )
+    db.add(review)
+    await db.flush()
+
+    db.add(
+        ReviewReply(
+            review_id=review.id,
+            author_user_id=doctor.id,
+            body="Thank you for your kind words!",
+        )
     )
 
 
@@ -460,6 +517,7 @@ async def main() -> None:
         await ensure_lab_bookings(db)
         await ensure_lab_tests(db)
         await ensure_workout(db)
+        await ensure_reviews(db)
         await set_rls_bypass(db, False)
         await db.commit()
 

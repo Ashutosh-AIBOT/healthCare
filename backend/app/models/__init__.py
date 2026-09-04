@@ -12,6 +12,7 @@ from app.models import nutrition
 from app.models import otp
 from app.models import prescription
 from app.models import provider
+from app.models import review
 from app.models import teleconsult
 from app.models import user
 from app.models import vitals
@@ -33,6 +34,7 @@ __all__ = [
     "otp",
     "prescription",
     "provider",
+    "review",
     "teleconsult",
     "user",
     "vitals",

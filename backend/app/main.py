@@ -7,6 +7,8 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.errors import AppError, app_error_handler, db_error_handler
+from app.core.logging import configure_logging
+from app.core.middleware import RequestContextMiddleware
 from app.db.session import engine
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -18,7 +20,10 @@ async def lifespan(_app: FastAPI):
     yield
 
 
+configure_logging()
+
 app = FastAPI(title="Aarogya API", version="0.1.0", lifespan=lifespan)
+app.add_middleware(RequestContextMiddleware)
 app.add_exception_handler(AppError, app_error_handler)
 app.add_exception_handler(SQLAlchemyError, db_error_handler)
 app.include_router(api_router)

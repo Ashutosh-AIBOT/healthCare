@@ -35,6 +35,10 @@ async def app_error_handler(_request: Request, exc: AppError) -> JSONResponse:
     )
 
 async def db_error_handler(_request: Request, exc: SQLAlchemyError) -> JSONResponse:
+    # PHI-safe: never echo raw SQL / bound params (may contain health fields)
+    from app.core.logging import get_logger
+
+    get_logger("aarogya.db").warning("db_error", extra={"exc_type": type(exc).__name__})
     if isinstance(exc, OperationalError):
         code = "DB_UNAVAILABLE"
         status = 503
@@ -42,7 +46,7 @@ async def db_error_handler(_request: Request, exc: SQLAlchemyError) -> JSONRespo
     else:
         code = "DB_ERROR"
         status = 500
-        detail = f"A database error occurred: {exc!r}"
+        detail = "A database error occurred. Please retry or contact support."
     return JSONResponse(
         status_code=status,
         content={

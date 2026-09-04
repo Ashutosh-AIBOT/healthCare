@@ -15,10 +15,29 @@ from app.models import (  # noqa: F401
     invite,
     member_medical_profile,
     member_transfer,
+    otp,
     provider,
     user,
     visibility,
 )
+
+# Guarded optional imports — modules may not exist on some feature branches
+try:  # noqa: SIM105
+    from app.models import dashboard  # type: ignore # noqa: F401
+except Exception:
+    pass
+try:
+    from app.models import fitness  # type: ignore # noqa: F401
+except Exception:
+    pass
+try:
+    from app.models import seo  # type: ignore # noqa: F401
+except Exception:
+    pass
+try:
+    from app.models import agency  # type: ignore # noqa: F401
+except Exception:
+    pass
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.database_url)

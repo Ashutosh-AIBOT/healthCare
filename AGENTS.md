@@ -2,7 +2,7 @@
 
 You are working on **Aarogya**, a multi-tenant AI health SaaS marketplace handling real medical data (PHI). Mistakes here are not cosmetic: they leak another family's medical records, give someone a diagnosis we are not licensed to give, or silently corrupt a lab trend chart a person makes decisions from.
 
-**Read first:** [PLAN.md](PLAN.md) and [CONTRIBUTING.md](CONTRIBUTING.md). Cursor rule files live locally under `.cursor/rules/` and are not published to GitHub.
+**Read first:** [PLAN.md](PLAN.md) and [CONTRIBUTING.md](CONTRIBUTING.md). Cursor rule files live locally under `.cursor/rules/` and are not published to GitHub. Legacy local folders `.agents/`, `.21st/`, `.claude/`, `.codex/` are gitignored and deprecated — do not read or write them; consolidate guidance here.
 
 ---
 

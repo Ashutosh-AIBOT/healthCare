@@ -8,9 +8,27 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: "*",
         allow: "/",
-        disallow: ["/app/", "/api/", "/login", "/register", "/verify", "/forgot-password", "/reset-password"],
+        disallow: [
+          "/app/",
+          "/api/",
+          "/login",
+          "/register",
+          "/verify",
+          "/forgot-password",
+          "/reset-password",
+          "/admin",
+          "/doctor",
+          "/lab",
+        ],
       },
+      // AI crawler explicit allow (GEO) — decide per engine, allow for discoverability
+      { userAgent: "GPTBot", allow: ["/", "/doctors", "/labs", "/features", "/legal/"] },
+      { userAgent: "PerplexityBot", allow: ["/", "/doctors", "/labs", "/features", "/legal/"] },
+      { userAgent: "Google-Extended", allow: "/" },
+      // Block faceted/param spam
+      { userAgent: "*", disallow: ["/*?*", "/*&*"] },
     ],
     sitemap: `${site}/sitemap.xml`,
+    host: site,
   };
 }

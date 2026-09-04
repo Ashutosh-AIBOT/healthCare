@@ -16,6 +16,7 @@ from app.models import (  # noqa: F401
     member_medical_profile,
     member_transfer,
     otp,
+    pending_registration,
     provider,
     user,
     visibility,

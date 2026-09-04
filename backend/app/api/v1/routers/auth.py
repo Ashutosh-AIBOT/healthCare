@@ -24,6 +24,7 @@ from app.schemas.auth import (
     TotpEnrollResponse,
     UpdatePasswordRequest,
     UserOut,
+    VerifyRegistrationRequest,
 )
 from app.services.auth_service import auth_service
 from app.services.totp_service import totp_service
@@ -31,13 +32,26 @@ from app.services.totp_service import totp_service
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.post("/register", response_model=AuthResponse, status_code=201)
+@router.post("/register", response_model=MessageResponse, status_code=202)
 async def register(
     payload: RegisterRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
-) -> AuthResponse:
+) -> MessageResponse:
+    """Stage 1: validate + stash pending registration + send OTP. Creates no account rows."""
     await check_rate_limit("auth:register:ip", limit=20, window_seconds=3600)
     return await auth_service.register(db, payload)
+
+
+@router.post("/verify-registration", response_model=AuthResponse, status_code=201)
+async def verify_registration(
+    payload: VerifyRegistrationRequest,
+    response: Response,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> AuthResponse:
+    """Stage 2: prove the OTP → create the account, verified, and sign the user in."""
+    result, refresh = await auth_service.verify_registration(db, payload.email, payload.code)
+    set_refresh_cookie(response, refresh)
+    return result
 
 
 @router.post("/login", response_model=AuthResponse)

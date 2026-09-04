@@ -35,6 +35,11 @@ class RegisterRequest(BaseModel):
         return v
 
 
+class VerifyRegistrationRequest(BaseModel):
+    email: EmailStr
+    code: str = Field(min_length=4, max_length=12)
+
+
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str

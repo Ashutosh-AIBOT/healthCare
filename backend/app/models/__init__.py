@@ -16,6 +16,7 @@ from app.models import teleconsult
 from app.models import user
 from app.models import vitals
 from app.models import visibility
+from app.models import workout
 
 __all__ = [
     "appointment",
@@ -36,4 +37,5 @@ __all__ = [
     "user",
     "vitals",
     "visibility",
+    "workout",
 ]

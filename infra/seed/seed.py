@@ -31,6 +31,7 @@ from app.models.prescription import Prescription, PrescriptionItem
 from app.models.provider import DoctorDetail, LabDetail, ProviderProfile
 from app.models.teleconsult import TeleconsultSession, TeleconsultStatus
 from app.models.user import Consent, ConsentDocument, SystemSetting, User
+from app.models.workout import WorkoutPlan, WorkoutSession, WorkoutExercise
 
 DEMO_PASSWORD = "Demo@1234"
 CONSENT_VERSION = "2026-09-01"
@@ -391,6 +392,55 @@ async def ensure_lab_tests(db: AsyncSession) -> None:
             db.add(LabTest(**test_data))
 
 
+async def ensure_workout(db: AsyncSession) -> None:
+    demo_user = await db.scalar(select(User).where(User.email == "demo@aarogya.app"))
+    if demo_user is None or demo_user.family_id is None:
+        return
+
+    family = await db.get(Family, demo_user.family_id)
+    if family is None:
+        return
+
+    member = await db.scalar(
+        select(FamilyMember).where(FamilyMember.family_id == family.id, FamilyMember.user_id == demo_user.id)
+    )
+    if member is None:
+        return
+
+    existing_plan = await db.scalar(
+        select(WorkoutPlan).where(WorkoutPlan.member_id == member.id, WorkoutPlan.title == "Morning Walk")
+    )
+    if existing_plan is not None:
+        return
+
+    plan = WorkoutPlan(
+        member_id=member.id,
+        title="Morning Walk",
+        description="30 minute morning walk",
+        condition_notes="Low impact; suitable for mild hypertension",
+        is_active=1,
+    )
+    db.add(plan)
+    await db.flush()
+
+    session = WorkoutSession(
+        plan_id=plan.id,
+        title="Day 1 Walk",
+        duration_minutes=30,
+        calories_burned=150,
+    )
+    db.add(session)
+    await db.flush()
+
+    db.add(
+        WorkoutExercise(
+            session_id=session.id,
+            name="Brisk Walking",
+            duration_seconds=1800,
+        )
+    )
+
+
 async def main() -> None:
     database_url = os.environ.get(
         "DATABASE_URL",
@@ -409,6 +459,7 @@ async def main() -> None:
         await ensure_appointments_and_consult_loop(db)
         await ensure_lab_bookings(db)
         await ensure_lab_tests(db)
+        await ensure_workout(db)
         await set_rls_bypass(db, False)
         await db.commit()
 

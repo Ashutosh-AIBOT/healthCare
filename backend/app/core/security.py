@@ -59,3 +59,34 @@ def decode_token(token: str, expected_type: str) -> dict[str, Any]:
     if payload.get("type") != expected_type:
         raise ValueError("invalid token type")
     return payload
+
+
+# --- JTI revocation via Redis (access_token 15m blacklist) ---
+
+_REDIS_JTI_PREFIX = "revoked_jti:"
+
+
+async def revoke_jti(jti: str, ttl_seconds: int | None = None) -> None:
+    """Mark access token jti as revoked until it naturally expires."""
+    ttl = ttl_seconds or settings.access_token_expire_minutes * 60
+    try:
+        import redis.asyncio as redis  # local import to avoid cycle
+
+        r = redis.from_url(settings.redis_url, decode_responses=True)
+        await r.setex(f"{_REDIS_JTI_PREFIX}{jti}", ttl, "1")
+        await r.aclose()
+    except Exception:
+        # Fail-open for revocation write — logout best-effort when Redis down
+        pass
+
+
+async def is_jti_revoked(jti: str) -> bool:
+    try:
+        import redis.asyncio as redis
+
+        r = redis.from_url(settings.redis_url, decode_responses=True, socket_connect_timeout=0.3, socket_timeout=0.3)
+        val = await r.get(f"{_REDIS_JTI_PREFIX}{jti}")
+        await r.aclose()
+        return val is not None
+    except Exception:
+        return False

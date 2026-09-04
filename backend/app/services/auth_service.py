@@ -233,6 +233,8 @@ class AuthService:
         await set_rls_bypass(db, True)
         try:
             await self._revoke_all_sessions(db, user.id)
+            # Also best-effort revoke any active access JTIs via Redis is not needed here
+            # because access tokens are short-lived (15m) and tied to refresh lifecycle.
         finally:
             await set_rls_bypass(db, False)
             await set_tenant_context(db, user.family_id)

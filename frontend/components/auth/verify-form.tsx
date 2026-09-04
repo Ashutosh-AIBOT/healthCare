@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { verifyOtpSchema, type VerifyOtpInput } from "@/lib/validations/auth";
-import { apiClient } from "@/lib/auth-client";
+import { apiClient, setAccessToken } from "@/lib/auth-client";
 
 export function VerifyForm() {
   const router = useRouter();
@@ -30,16 +30,25 @@ export function VerifyForm() {
 
   const onSubmit = handleSubmit(async (values) => {
     setServerError(null);
-    const { error } = await apiClient("/api/auth/verify-otp", {
-      method: "POST",
-      body: JSON.stringify({
-        email: values.email,
-        code: values.code,
-        purpose: "verify_email",
-      }),
-    });
+    const { data, error } = await apiClient<{ tokens?: { access_token: string } }>(
+      "/api/auth/verify-otp",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          email: values.email,
+          code: values.code,
+          purpose: "verify_email",
+        }),
+      },
+    );
     if (error) {
       setServerError(error.detail || "Verification failed.");
+      return;
+    }
+    // verify_email completes registration and signs the user in.
+    if (data?.tokens?.access_token) {
+      setAccessToken(data.tokens.access_token);
+      router.push("/app");
       return;
     }
     router.push(`/login?verified=1&email=${encodeURIComponent(values.email)}`);

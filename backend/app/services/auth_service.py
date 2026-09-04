@@ -2,7 +2,8 @@ import hashlib
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -17,10 +18,12 @@ from app.core.security import (
 )
 from app.db.session import UserRole, set_rls_bypass, set_tenant_context
 from app.models.family import Family
+from app.models.pending_registration import PendingRegistration
 from app.models.user import Consent, Session, User
 from app.schemas.auth import (
     AccessTokenResponse,
     AuthResponse,
+    MessageResponse,
     RegisterRequest,
     SessionOut,
     UserOut,
@@ -40,48 +43,137 @@ def _hash_refresh_token(token: str) -> str:
 
 
 class AuthService:
-    async def register(self, db: AsyncSession, payload: RegisterRequest) -> AuthResponse:
+    async def register(self, db: AsyncSession, payload: RegisterRequest) -> MessageResponse:
+        """Stage 1 of signup: validate + stash a pending registration + send OTP.
+
+        Creates NO users/families/consents rows. The account is materialized
+        only by verify_registration after the email OTP is proven.
+        """
         await check_rate_limit(f"auth:register:{payload.email.lower()}", limit=5, window_seconds=3600)
-        family: Family | None = None
-        user: User | None = None
+        email = payload.email.lower()
+        now = datetime.now(UTC)
         await set_rls_bypass(db, True)
         try:
-            existing_email = await db.scalar(select(User).where(User.email == payload.email.lower()))
-            if existing_email:
+            if await db.scalar(select(User).where(User.email == email)):
                 raise AppError(
                     code="AUTH_EMAIL_EXISTS",
                     status=409,
                     detail="An account with this email already exists.",
                 )
-            existing_handle = await db.scalar(select(User).where(User.handle == payload.handle))
-            if existing_handle:
+            if await db.scalar(select(User).where(User.handle == payload.handle)):
                 raise AppError(
                     code="CONFLICT_DUPLICATE",
                     status=409,
                     detail="That handle is already taken.",
                 )
 
-            family = Family(name=f"{payload.full_name or payload.handle}'s Family")
+            # Resend path: same email re-registers → drop its pending row and start over.
+            # (OTP send itself is rate-limited to 3/hour in otp_service.)
+            await db.execute(delete(PendingRegistration).where(PendingRegistration.email == email))
+
+            live_handle = await db.scalar(
+                select(PendingRegistration).where(
+                    PendingRegistration.handle == payload.handle,
+                    PendingRegistration.expires_at > now,
+                )
+            )
+            if live_handle is not None:
+                raise AppError(
+                    code="CONFLICT_DUPLICATE",
+                    status=409,
+                    detail="That handle is already taken.",
+                )
+
+            db.add(
+                PendingRegistration(
+                    email=email,
+                    handle=payload.handle,
+                    password_hash=hash_password(payload.password),
+                    full_name=payload.full_name,
+                    terms_version=payload.terms_version,
+                    privacy_version=payload.privacy_version,
+                    medical_disclaimer_version=payload.medical_disclaimer_version,
+                    expires_at=now + timedelta(minutes=settings.pending_registration_ttl_minutes),
+                )
+            )
+            try:
+                await db.flush()
+            except IntegrityError as exc:
+                raise AppError(
+                    code="CONFLICT_DUPLICATE",
+                    status=409,
+                    detail="That email or handle is already taken.",
+                ) from exc
+
+            await otp_service.send_for_purpose(db, email, "verify_email")
+        finally:
+            await set_rls_bypass(db, False)
+
+        return MessageResponse(
+            message="Verify your email with the OTP we sent to create your account.",
+        )
+
+    async def verify_registration(
+        self, db: AsyncSession, email: str, code: str
+    ) -> tuple[AuthResponse, str]:
+        """Stage 2 of signup: prove the OTP, then materialize the account.
+
+        Returns the new user with issued tokens (auto sign-in), plus the raw
+        refresh token for the httpOnly cookie.
+        """
+        email = email.lower()
+        await otp_service.verify_for_purpose(db, email, code, "verify_email")
+
+        await set_rls_bypass(db, True)
+        try:
+            pending = await db.get(PendingRegistration, email)
+            if pending is None or pending.expires_at <= datetime.now(UTC):
+                if pending is not None:
+                    await db.delete(pending)
+                raise AppError(
+                    code="REGISTRATION_EXPIRED",
+                    status=410,
+                    detail="Registration expired. Please register again.",
+                )
+
+            # Race guard: someone completed this email/handle while OTP was pending.
+            if await db.scalar(select(User).where(User.email == email)):
+                await db.delete(pending)
+                raise AppError(
+                    code="AUTH_EMAIL_EXISTS",
+                    status=409,
+                    detail="An account with this email already exists.",
+                )
+            if await db.scalar(select(User).where(User.handle == pending.handle)):
+                await db.delete(pending)
+                raise AppError(
+                    code="CONFLICT_DUPLICATE",
+                    status=409,
+                    detail="That handle is already taken.",
+                )
+
+            family = Family(name=f"{pending.full_name or pending.handle}'s Family")
             db.add(family)
             await db.flush()
 
+            now = datetime.now(UTC)
             user = User(
-                email=payload.email.lower(),
-                handle=payload.handle,
-                password_hash=hash_password(payload.password),
-                full_name=payload.full_name,
+                email=email,
+                handle=pending.handle,
+                password_hash=pending.password_hash,
+                full_name=pending.full_name,
                 role=UserRole.FAMILY_OWNER,
                 family_id=family.id,
-                is_verified=False,
+                is_verified=True,
+                email_verified_at=now,
             )
             db.add(user)
             await db.flush()
 
-            now = datetime.now(UTC)
             for consent_type, version in (
-                ("terms", payload.terms_version),
-                ("privacy", payload.privacy_version),
-                ("medical_disclaimer", payload.medical_disclaimer_version),
+                ("terms", pending.terms_version),
+                ("privacy", pending.privacy_version),
+                ("medical_disclaimer", pending.medical_disclaimer_version),
             ):
                 db.add(
                     Consent(
@@ -92,18 +184,18 @@ class AuthService:
                     )
                 )
 
-            await otp_service.send_for_purpose(db, user.email, "verify_email")
+            await db.delete(pending)
+            refresh, tokens = await self._issue_tokens(db, user, device_label=None)
+            return (
+                AuthResponse(
+                    user=UserOut.model_validate(user),
+                    tokens=tokens,
+                    message="Account created and verified. Welcome!",
+                ),
+                refresh,
+            )
         finally:
             await set_rls_bypass(db, False)
-            if family is not None:
-                await set_tenant_context(db, family.id)
-
-        assert user is not None
-        return AuthResponse(
-            user=UserOut.model_validate(user),
-            tokens=None,
-            message="Account created. Verify your email with the OTP we sent.",
-        )
 
     async def login(
         self,

@@ -16,18 +16,13 @@ async def register_verified(client, *, email: str, password: str = "SecurePass1!
             "medical_disclaimer_version": "2026-09-01",
         },
     )
-    assert reg.status_code == 201, reg.text
-    assert reg.json()["tokens"] is None
+    assert reg.status_code == 202, reg.text
 
     verify = await client.post(
-        "/api/v1/otp/verify",
-        json={"email": email, "code": settings.otp_dev_code, "purpose": "verify_email"},
+        "/api/v1/auth/verify-registration",
+        json={"email": email, "code": settings.otp_dev_code},
     )
-    assert verify.status_code == 200, verify.text
-
-    login = await client.post(
-        "/api/v1/auth/login",
-        json={"email": email, "password": password},
-    )
-    assert login.status_code == 200, login.text
-    return login
+    assert verify.status_code == 201, verify.text
+    assert verify.json()["tokens"] is not None
+    assert verify.json()["user"]["is_verified"] is True
+    return verify

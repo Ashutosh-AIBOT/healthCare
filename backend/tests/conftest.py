@@ -51,7 +51,7 @@ async def clean_db(engine):
         await conn.execute(
             text(
                 "TRUNCATE TABLE backup_codes, totp_secrets, consents, consent_documents, "
-                "sessions, otp_codes, consent_access_logs, member_claims, member_visibility_grants, "
+                "sessions, otp_codes, pending_registrations, consent_access_logs, member_claims, member_visibility_grants, "
                 "document_chunks, lab_report_values, documents, jobs, "
                 "member_transfers, member_medical_profiles, invites, "
                 "family_members, users, families RESTART IDENTITY CASCADE"

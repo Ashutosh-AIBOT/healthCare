@@ -36,16 +36,28 @@ type Provider = {
 const CITIES = ["Delhi", "Mumbai", "Bangalore", "Hyderabad", "Chennai", "Kolkata", "Pune", "Jaipur"];
 const SPECIALIZATIONS = ["General Medicine", "Cardiology", "Dermatology", "Pediatrics", "Orthopedics", "Gynecology"];
 
-export function ProviderSearchClient({ providerType }: { providerType: "doctor" | "lab" }) {
+type Props = {
+  providerType: "doctor" | "lab";
+  initialCity?: string;
+  initialSpecialization?: string;
+  qualityGate?: boolean;
+};
+
+export function ProviderSearchClient({
+  providerType,
+  initialCity,
+  initialSpecialization,
+  qualityGate,
+}: Props) {
   const searchParams = useSearchParams();
   const [results, setResults] = useState<Provider[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState(searchParams.get("q") || "");
-  const [city, setCity] = useState(searchParams.get("city") || "");
+  const [city, setCity] = useState(initialCity || searchParams.get("city") || "");
   const [pincode, setPincode] = useState(searchParams.get("pincode") || "");
-  const [specialization, setSpecialization] = useState(searchParams.get("specialization") || "");
-  const [verifiedOnly, setVerifiedOnly] = useState(searchParams.get("verified") === "1");
+  const [specialization, setSpecialization] = useState(initialSpecialization || searchParams.get("specialization") || "");
+  const [verifiedOnly, setVerifiedOnly] = useState(qualityGate || searchParams.get("verified") === "1");
   const [minFee, setMinFee] = useState(searchParams.get("min_fee") || "");
   const [maxFee, setMaxFee] = useState(searchParams.get("max_fee") || "");
 
@@ -82,7 +94,7 @@ export function ProviderSearchClient({ providerType }: { providerType: "doctor" 
     setCity("");
     setPincode("");
     setSpecialization("");
-    setVerifiedOnly(false);
+    setVerifiedOnly(!!qualityGate);
     setMinFee("");
     setMaxFee("");
   };

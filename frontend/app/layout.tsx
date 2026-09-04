@@ -38,6 +38,7 @@ export const metadata: Metadata = {
     title: "Aarogya — Your family's health records, understood",
     description:
       "Family health OS and care marketplace. Explain reports, track trends, book verified labs and doctors.",
+    url: siteUrl,
   },
   twitter: {
     card: "summary_large_image",

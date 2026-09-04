@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1.routers import ai, auth, documents, families, invites, members, otp, profiles, providers, search, transfers, visibility
+from app.api.v1.routers import ai, appointments, auth, documents, families, invites, members, otp, profiles, providers, search, transfers, visibility
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(auth.router)
@@ -15,3 +15,4 @@ api_router.include_router(providers.router)
 api_router.include_router(search.router)
 api_router.include_router(documents.router)
 api_router.include_router(ai.router)
+api_router.include_router(appointments.router)

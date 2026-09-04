@@ -26,6 +26,13 @@ async def get_current_user(
         )
     try:
         payload = decode_token(credentials.credentials, "access")
+        # JTI blacklist (Redis) — allows logout-all style revocation for access tokens
+        jti = payload.get("jti")
+        if jti:
+            from app.core.security import is_jti_revoked
+
+            if await is_jti_revoked(jti):
+                raise ValueError("revoked jti")
         user_id = uuid.UUID(payload["sub"])
     except (ValueError, KeyError) as exc:
         raise AppError(

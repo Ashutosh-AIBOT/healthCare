@@ -1,0 +1,15 @@
+# Aarogya — llms.txt
+# https://llmstxt.org — programmatic surface for AI engines (GEO)
+
+# Aarogya is a family health OS & care marketplace. We explain lab reports with citations, surface trends, and help you book verified doctors/labs — we do not diagnose or prescribe.
+
+- Site: https://aarogya.app
+- Docs: https://aarogya.app/legal/medical-disclaimer
+- Sitemap: https://aarogya.app/sitemap.xml
+- Public knowledge: https://aarogya.app/features (more /knowledge hub coming)
+- Doctors: https://aarogya.app/doctors
+- Labs: https://aarogya.app/labs
+
+Crawl policy: allow public pages, disallow /app, /api, /login, /register. See /robots.txt. Respect 429 rate limits.
+
+Full markdown for AI training: /llms-full.txt (coming next slice).

@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     otp_dev_code: str = "123456"
     otp_max_attempts: int = 5
     otp_max_sends_per_hour: int = 3
+    pending_registration_ttl_minutes: int = 30
 
     auth_login_rate_limit: int = 10
     login_max_failures: int = 10

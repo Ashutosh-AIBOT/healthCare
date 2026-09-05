@@ -5,12 +5,13 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.db.session import set_rls_bypass, set_tenant_context
 from app.models.family import Family
+from app.models.pending_registration import PendingRegistration
 from app.models.user import Session, User
 from tests.helpers_auth import register_verified
 
 
 class TestAuthFlow:
-    async def test_register_requires_verification_before_tokens(self, client):
+    async def test_register_creates_no_account_until_verified(self, client, db):
         resp = await client.post(
             "/api/v1/auth/register",
             json={
@@ -20,20 +21,58 @@ class TestAuthFlow:
                 "full_name": "Alice",
             },
         )
-        assert resp.status_code == 201
-        data = resp.json()
-        assert data["user"]["email"] == "alice-register@example.com"
-        assert data["user"]["handle"] == "alice_reg"
-        assert data["user"]["family_id"] is not None
-        assert data["user"]["is_verified"] is False
-        assert data["tokens"] is None
+        assert resp.status_code == 202
+        assert "OTP" in resp.json()["message"]
 
+        # No user/family rows exist yet — the account is only staged as pending.
+        assert await db.scalar(select(User).where(User.email == "alice-register@example.com")) is None
+        assert (await db.scalars(select(Family))).all() == []
+
+        # Login before verification: unknown credentials (no enumeration signal).
         blocked = await client.post(
             "/api/v1/auth/login",
             json={"email": "alice-register@example.com", "password": "SecurePass1!"},
         )
-        assert blocked.status_code == 403
-        assert blocked.json()["code"] == "AUTH_EMAIL_UNVERIFIED"
+        assert blocked.status_code == 401
+        assert blocked.json()["code"] == "AUTH_INVALID_CREDENTIALS"
+
+        # OTP proof materializes the verified account AND signs the user in.
+        done = await client.post(
+            "/api/v1/auth/verify-registration",
+            json={"email": "alice-register@example.com", "code": settings.otp_dev_code},
+        )
+        assert done.status_code == 201
+        data = done.json()
+        assert data["user"]["email"] == "alice-register@example.com"
+        assert data["user"]["handle"] == "alice_reg"
+        assert data["user"]["family_id"] is not None
+        assert data["user"]["is_verified"] is True
+        assert "access_token" in data["tokens"]
+        assert done.cookies.get("aarogya_refresh")
+
+    async def test_verify_registration_rejects_expired_pending(self, client, db):
+        await client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "stale-pending@example.com",
+                "password": "SecurePass1!",
+                "handle": "stale_pending",
+            },
+        )
+        # Age the pending row past its TTL without touching the OTP.
+        await set_rls_bypass(db, True)
+        pending = await db.get(PendingRegistration, "stale-pending@example.com")
+        assert pending is not None
+        pending.expires_at = datetime.now(UTC) - timedelta(minutes=1)
+        await set_rls_bypass(db, False)
+
+        stale = await client.post(
+            "/api/v1/auth/verify-registration",
+            json={"email": "stale-pending@example.com", "code": settings.otp_dev_code},
+        )
+        assert stale.status_code == 410
+        assert stale.json()["code"] == "REGISTRATION_EXPIRED"
+        assert await db.scalar(select(User).where(User.email == "stale-pending@example.com")) is None
 
     async def test_login_returns_access_and_refresh_cookie(self, client):
         login = await register_verified(

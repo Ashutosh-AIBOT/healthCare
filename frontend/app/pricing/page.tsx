@@ -59,29 +59,29 @@ export default function PricingPage() {
               <Reveal key={p.name} delayMs={i * 80}>
                 <li
                   className={`flex h-full flex-col rounded-[1.75rem] p-1.5 ring-1 ${
-                    p.featured ? "bg-ink ring-ink" : "bg-black/[0.03] ring-black/[0.04]"
+                    p.featured ? "bg-primary ring-primary" : "bg-mist ring-line"
                   }`}
                 >
                   <div
                     className={`flex h-full flex-col rounded-[calc(1.75rem-0.375rem)] p-7 ${
-                      p.featured ? "bg-ink text-foam" : "bg-surface shadow-[inset_0_1px_0_rgb(255_255_255_/_0.7)]"
+                      p.featured ? "bg-primary text-primary-foreground" : "bg-surface shadow-card"
                     }`}
                   >
                     <h2 className="text-lg font-semibold">{p.name}</h2>
                     <p className="mt-4 font-display text-4xl font-semibold tracking-tight">
                       {p.price}
-                      <span className={`text-base font-sans font-normal ${p.featured ? "text-foam/60" : "text-muted"}`}>
+                      <span className={`text-base font-sans font-normal ${p.featured ? "text-primary-foreground/70" : "text-muted"}`}>
                         {p.period}
                       </span>
                     </p>
-                    <p className={`mt-4 flex-1 text-sm leading-relaxed ${p.featured ? "text-foam/70" : "text-muted"}`}>
+                    <p className={`mt-4 flex-1 text-sm leading-relaxed ${p.featured ? "text-primary-foreground/80" : "text-muted"}`}>
                       {p.blurb}
                     </p>
                     <Link href={p.name === "Clinic" ? "/for-doctors" : "/register"} className="mt-8">
                       <Button
                         size="lg"
-                        className={`w-full ${p.featured ? "bg-foam text-ink hover:bg-foam/90" : ""}`}
-                        variant={p.featured ? "primary" : "secondary"}
+                        className={`w-full ${p.featured ? "bg-surface text-ink hover:bg-surface/90" : ""}`}
+                        variant={p.featured ? "secondary" : "secondary"}
                       >
                         {p.cta}
                       </Button>

@@ -134,7 +134,7 @@ async def ensure_user(db: AsyncSession, spec: dict) -> User:
             FamilyMember(
                 family_id=family.id,
                 user_id=user.id,
-                relation="self",
+                relation="other",
                 is_dependent=False,
                 timezone="Asia/Kolkata",
             )

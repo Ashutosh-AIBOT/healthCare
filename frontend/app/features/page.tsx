@@ -58,8 +58,8 @@ export default function FeaturesPage() {
           <ul className="mt-16 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {features.map((f, i) => (
               <Reveal key={f.title} delayMs={i * 60}>
-                <li className="h-full rounded-[1.75rem] bg-black/[0.03] p-1.5 ring-1 ring-black/[0.04]">
-                  <div className="h-full rounded-[calc(1.75rem-0.375rem)] bg-surface p-7 shadow-[inset_0_1px_0_rgb(255_255_255_/_0.7)]">
+                <li className="h-full rounded-[1.75rem] bg-mist p-1.5 ring-1 ring-line">
+                  <div className="h-full rounded-[calc(1.75rem-0.375rem)] bg-surface p-7 shadow-card">
                     <h2 className="text-lg font-semibold tracking-tight">{f.title}</h2>
                     <p className="mt-3 text-sm leading-relaxed text-muted">{f.body}</p>
                   </div>

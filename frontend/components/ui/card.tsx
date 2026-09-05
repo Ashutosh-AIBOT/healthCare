@@ -3,8 +3,8 @@ import { HTMLAttributes, type ReactNode } from "react";
 
 export function Card({ className, children, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className={cn("rounded-[1.75rem] bg-black/[0.03] p-1.5 ring-1 ring-black/[0.04]", className)} {...props}>
-      <div className="rounded-[calc(1.75rem-0.375rem)] bg-surface p-6 shadow-[inset_0_1px_0_rgb(255_255_255_/_0.7)] md:p-8">
+    <div className={cn("rounded-[1.75rem] bg-surface p-1.5 shadow-card", className)} {...props}>
+      <div className="rounded-[calc(1.75rem-0.375rem)] bg-surface p-6 md:p-8">
         {children}
       </div>
     </div>

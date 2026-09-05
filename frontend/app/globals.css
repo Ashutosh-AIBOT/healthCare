@@ -4,39 +4,33 @@
 
 /*
   Aarogya — Design tokens (oklch)
-  Inspired by a sticky-note / paper-canvas aesthetic: warm neutral canvas,
-  white cards with soft depth, serif display headlines, and three accent
-  surfaces — lime, blush, and charcoal — used sparingly to add rhythm.
-  Only Tailwind directives + CSS custom properties here (AGENTS hard rule #1).
-  All colors are oklch for perceptual uniformity + P3-ready. Hex fallbacks are
-  generated via color-mix — never hardcode hex in components.
+  Single source of truth for light and dark themes.
+  All colors are oklch for perceptual uniformity + P3-ready.
 */
 
 :root {
   color-scheme: light;
 
   /* canvas / surfaces */
-  --color-paper: oklch(0.92 0.008 80);
-  --color-surface: oklch(0.99 0.003 80);
-  --color-sunken: oklch(0.88 0.01 80);
-  --color-foam: oklch(0.92 0.008 80);
-  --color-mist: oklch(0.85 0.015 190);
+  --color-paper: oklch(0.94 0.01 210);
+  --color-surface: oklch(0.98 0.003 210);
+  --color-sunken: oklch(0.90 0.012 210);
+  --color-foam: oklch(0.96 0.005 210);
+  --color-mist: oklch(0.94 0.01 210);
 
   /* ink / muted / line */
   --color-ink: oklch(0.18 0.015 200);
   --color-muted: oklch(0.48 0.02 200);
   --color-line: oklch(0.84 0.015 200);
 
-  /* primary teal — kept for brand continuity */
-  --color-primary: oklch(0.48 0.09 190);
+  /* primary indigo — restrained accent */
+  --color-primary: oklch(0.45 0.09 250);
   --color-primary-foreground: oklch(0.99 0.003 80);
-  --color-primary-soft: oklch(0.93 0.03 190);
+  --color-primary-soft: oklch(0.93 0.03 250);
 
-  /* apricot accent — kept as warm pop */
+  /* accents — use sparingly */
   --color-apricot: oklch(0.72 0.14 55);
-
-  /* accent surfaces from the reference board */
-  --color-lime: oklch(0.92 0.22 128);
+  --color-lime: oklch(0.92 0.25 130);
   --color-lime-ink: oklch(0.2 0.02 200);
   --color-blush: oklch(0.88 0.04 20);
   --color-charcoal: oklch(0.18 0.01 200);
@@ -53,24 +47,29 @@
   --color-doctor: oklch(0.5 0.11 250);
   --color-agency: oklch(0.55 0.1 300);
 
-  /* radii — larger for sticky-note feel */
+  /* typography */
+  --font-display: "Fraunces", "Playfair Display", Georgia, serif;
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-mono: ui-monospace, monospace;
+
+  /* radii */
   --radius-sm: 12px;
   --radius-md: 18px;
   --radius-lg: 24px;
-  --radius-xl: 32px;
+  --radius-xl: 28px;
   --radius-full: 999px;
 
-  /* shadows — soft, paper-like depth */
+  /* shadows */
   --shadow-ambient: 0 24px 60px -28px oklch(0.18 0.015 200 / 0.18);
   --shadow-lift: 0 8px 24px -10px oklch(0.18 0.015 200 / 0.18);
   --shadow-hairline: 0 0 0 1px oklch(0.84 0.015 200);
   --shadow-card: 0 12px 40px -16px oklch(0.18 0.015 200 / 0.22), 0 2px 6px -2px oklch(0.18 0.015 200 / 0.08);
 
-  /* grain 2% */
+  /* grain */
   --grain: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");
 }
 
-/* Dark — deep charcoal-teal, not pure black; borders lighter/lower-chroma */
+/* Dark */
 .dark,
 [data-theme="dark"] {
   color-scheme: dark;
@@ -85,12 +84,11 @@
   --color-muted: oklch(0.66 0.02 210);
   --color-line: oklch(0.28 0.02 210);
 
-  --color-primary: oklch(0.72 0.1 190);
+  --color-primary: oklch(0.72 0.1 250);
   --color-primary-foreground: oklch(0.16 0.012 210);
-  --color-primary-soft: oklch(0.28 0.04 190);
+  --color-primary-soft: oklch(0.28 0.04 250);
 
   --color-apricot: oklch(0.75 0.12 55);
-
   --color-lime: oklch(0.82 0.18 128);
   --color-lime-ink: oklch(0.16 0.012 210);
   --color-blush: oklch(0.34 0.05 20);
@@ -175,7 +173,6 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* Sticky-note card — paper feel with shadow */
   .card-paper {
     background: var(--color-surface);
     border-radius: var(--radius-lg);

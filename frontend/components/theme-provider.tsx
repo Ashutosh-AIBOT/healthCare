@@ -17,44 +17,50 @@ function getSystem(): "light" | "dark" {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
+function readInitialTheme(): { theme: Theme; resolved: "light" | "dark" } {
+  if (typeof window === "undefined") {
+    return { theme: "light", resolved: "light" };
+  }
+  const stored = (localStorage.getItem("aarogya-theme") as Theme | null) ?? "light";
+  const resolved = stored === "system" ? getSystem() : stored;
+  return { theme: stored, resolved };
+}
+
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = React.useState<Theme>("system");
-  const [resolved, setResolved] = React.useState<"light" | "dark">("light");
+  const [state, setState] = React.useState(readInitialTheme);
 
   React.useEffect(() => {
-    const stored = (localStorage.getItem("aarogya-theme") as Theme | null) ?? "system";
-    setThemeState(stored);
-    const r = stored === "system" ? getSystem() : stored;
-    setResolved(r);
-    document.documentElement.classList.toggle("dark", r === "dark");
-    document.documentElement.setAttribute("data-theme", r);
-  }, []);
+    const { theme, resolved } = state;
+    document.documentElement.classList.toggle("dark", resolved === "dark");
+    document.documentElement.setAttribute("data-theme", resolved);
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute("content", resolved === "dark" ? "#0e1b20" : "#fdfcfa");
+  }, [state.resolved]);
 
   const setTheme = React.useCallback((t: Theme) => {
     localStorage.setItem("aarogya-theme", t);
-    const r = t === "system" ? getSystem() : (t as "light" | "dark");
-    setResolved(r);
-    document.documentElement.classList.toggle("dark", r === "dark");
-    document.documentElement.setAttribute("data-theme", r);
-    // update theme-color meta
-    const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", r === "dark" ? "#0e1b20" : "#fdfcfa");
+    const resolved = t === "system" ? getSystem() : t;
+    setState({ theme: t, resolved });
   }, []);
 
   React.useEffect(() => {
-    if (theme !== "system") return;
+    if (state.theme !== "system") return;
     const m = window.matchMedia("(prefers-color-scheme: dark)");
     const onChange = () => {
-      const r = getSystem();
-      setResolved(r);
-      document.documentElement.classList.toggle("dark", r === "dark");
-      document.documentElement.setAttribute("data-theme", r);
+      const resolved = getSystem();
+      setState((prev) => ({ ...prev, resolved }));
+      document.documentElement.classList.toggle("dark", resolved === "dark");
+      document.documentElement.setAttribute("data-theme", resolved);
     };
     m.addEventListener("change", onChange);
     return () => m.removeEventListener("change", onChange);
-  }, [theme]);
+  }, [state.theme]);
 
-  return <ThemeCtx.Provider value={{ theme, resolved, setTheme }}>{children}</ThemeCtx.Provider>;
+  return (
+    <ThemeCtx.Provider value={{ theme: state.theme, resolved: state.resolved, setTheme }}>
+      {children}
+    </ThemeCtx.Provider>
+  );
 }
 
 export function useTheme() {

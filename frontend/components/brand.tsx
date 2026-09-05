@@ -23,3 +23,16 @@ export function Disclaimer({ className }: { className?: string }) {
     </p>
   );
 }
+
+export function XomniBadge({ className }: { className?: string }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full bg-primary-soft px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary",
+        className,
+      )}
+    >
+      Xomni
+    </span>
+  );
+}

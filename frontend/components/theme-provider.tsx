@@ -19,9 +19,9 @@ function getSystem(): "light" | "dark" {
 
 function readInitialTheme(): { theme: Theme; resolved: "light" | "dark" } {
   if (typeof window === "undefined") {
-    return { theme: "light", resolved: "light" };
+    return { theme: "system", resolved: "light" };
   }
-  const stored = (localStorage.getItem("aarogya-theme") as Theme | null) ?? "light";
+  const stored = (localStorage.getItem("aarogya-theme") as Theme | null) ?? "system";
   const resolved = stored === "system" ? getSystem() : stored;
   return { theme: stored, resolved };
 }

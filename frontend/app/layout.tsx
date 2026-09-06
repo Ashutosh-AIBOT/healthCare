@@ -123,7 +123,7 @@ export const metadata: Metadata = {
   verification: { google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION },
 };
 
-const themeInitScript = `(function(){try{var k='aarogya-theme',d=document.documentElement,s=localStorage.getItem(k);var t=s&&s!=='system'?s:'light';if(t==='dark'){d.classList.add('dark');}else{d.classList.remove('dark');}d.setAttribute('data-theme',t);}catch(e){}})();`;
+const themeInitScript = `(function(){try{var k='aarogya-theme',d=document.documentElement,s=localStorage.getItem(k);var t=(s==='light'||s==='dark')?s:(window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');if(t==='dark'){d.classList.add('dark');}else{d.classList.remove('dark');}d.setAttribute('data-theme',t);}catch(e){}})();`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

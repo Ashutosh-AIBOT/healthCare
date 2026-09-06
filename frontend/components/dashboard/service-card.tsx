@@ -43,9 +43,9 @@ const icons: Record<string, ReactNode> = {
 
 const colorStyles: Record<string, string> = {
   primary: "bg-primary text-primary-foreground",
-  lime: "bg-primary text-primary-foreground",
-  blush: "bg-primary text-primary-foreground",
-  apricot: "bg-primary text-primary-foreground",
+  lime: "bg-lime text-lime-ink",
+  blush: "bg-blush text-ink",
+  apricot: "bg-apricot text-lime-ink",
 };
 
 export function ServiceCard({
@@ -65,17 +65,8 @@ export function ServiceCard({
 }) {
   const bg = colorStyles[color] || colorStyles.primary;
 
-  const Card = href ? Link : "div";
-  const cardProps = href ? { href } : {};
-
-  return (
-    <Card
-      {...cardProps}
-      className={cn(
-         "flex flex-col gap-3 rounded-[1.75rem] bg-surface p-5 shadow-card transition-transform duration-300 ease-soft hover:-translate-y-0.5 hover:shadow-lift",
-        className,
-      )}
-    >
+  const inner = (
+    <>
       <div className={cn("inline-flex h-10 w-10 items-center justify-center rounded-xl", bg)}>
         {icons[icon] || icons.doctors}
       </div>
@@ -83,6 +74,21 @@ export function ServiceCard({
         <h3 className="font-semibold text-ink">{title}</h3>
         {description ? <p className="mt-1 text-xs text-muted">{description}</p> : null}
       </div>
-    </Card>
+    </>
   );
+
+  const className_merged = cn(
+    "flex flex-col gap-3 rounded-[1.75rem] bg-surface p-5 shadow-card transition-transform duration-300 ease-soft hover:-translate-y-0.5 hover:shadow-lift",
+    className,
+  );
+
+  if (href) {
+    return (
+      <Link href={href} className={className_merged}>
+        {inner}
+      </Link>
+    );
+  }
+
+  return <div className={className_merged}>{inner}</div>;
 }

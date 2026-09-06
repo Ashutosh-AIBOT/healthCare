@@ -1,12 +1,12 @@
 import { type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
-const colorStyles: Record<string, string> = {
-  primary: "bg-primary text-primary-foreground",
-  lime: "bg-primary text-primary-foreground",
-  blush: "bg-primary text-primary-foreground",
-  charcoal: "bg-primary text-primary-foreground",
-  apricot: "bg-primary text-primary-foreground",
+const colorStyles: Record<string, { bg: string; chip: string }> = {
+  primary: { bg: "bg-primary text-primary-foreground", chip: "bg-primary-foreground/20" },
+  lime: { bg: "bg-lime text-lime-ink", chip: "bg-lime-ink/10" },
+  blush: { bg: "bg-blush text-ink", chip: "bg-ink/10" },
+  charcoal: { bg: "bg-charcoal text-charcoal-foreground", chip: "bg-charcoal-foreground/20" },
+  apricot: { bg: "bg-apricot text-lime-ink", chip: "bg-lime-ink/10" },
 };
 
 const icons: Record<string, ReactNode> = {
@@ -66,19 +66,19 @@ export function StatCard({
   color?: keyof typeof colorStyles;
   className?: string;
 }) {
-  const bg = colorStyles[color] || colorStyles.primary;
+  const style = colorStyles[color] || colorStyles.primary;
 
   return (
     <div
       className={cn(
         "flex flex-col justify-between rounded-[1.75rem] p-6 shadow-lift",
-        bg,
+        style.bg,
         className,
       )}
     >
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium opacity-90">{label}</span>
-        <span className="rounded-xl bg-primary-foreground/20 p-2">{icons[color] || icons.primary}</span>
+        <span className={cn("rounded-xl p-2", style.chip)}>{icons[color] || icons.primary}</span>
       </div>
       <div>
         <p className="mt-4 text-3xl font-semibold tracking-tight">{value}</p>

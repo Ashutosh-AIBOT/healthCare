@@ -14,7 +14,6 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Radio } from "lucide-react";
-import { LiveKitVoiceModal } from "@/components/xomni/livekit-voice-modal";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -46,20 +45,20 @@ type Me = {
 type ChatMode = "general" | "food" | "timetable" | "reports" | "fitness";
 
 const MODE_META: Record<ChatMode, { label: string; icon: React.ReactNode; color: string; prompt: string }> = {
-  general:   { label: "General",    icon: <Sparkles className="h-4 w-4" />, color: "text-primary",  prompt: "Ask me anything..." },
-  food:      { label: "Food",       icon: <Utensils className="h-4 w-4" />, color: "text-emerald-600", prompt: "Ask about food & nutrition..." },
-  timetable: { label: "Timetable",  icon: <Clock className="h-4 w-4" />,    color: "text-amber-600", prompt: "Plan your day..." },
-  fitness:   { label: "Fitness",    icon: <Activity className="h-4 w-4" />, color: "text-blue-600",  prompt: "Ask about workouts..." },
-  reports:   { label: "Reports",    icon: <FileText className="h-4 w-4" />, color: "text-violet-600", prompt: "Ask about lab reports..." },
+  general: { label: "General", icon: <Sparkles className="h-4 w-4" />, color: "text-primary", prompt: "Ask me anything..." },
+  food: { label: "Food", icon: <Utensils className="h-4 w-4" />, color: "text-emerald-600", prompt: "Ask about food & nutrition..." },
+  timetable: { label: "Timetable", icon: <Clock className="h-4 w-4" />, color: "text-amber-600", prompt: "Plan your day..." },
+  fitness: { label: "Fitness", icon: <Activity className="h-4 w-4" />, color: "text-blue-600", prompt: "Ask about workouts..." },
+  reports: { label: "Reports", icon: <FileText className="h-4 w-4" />, color: "text-violet-600", prompt: "Ask about lab reports..." },
 };
 
-const QUICK_PROMPTS: Record<ChatMode, Array<{title: string, desc: string}>> = {
-  general:   [
+const QUICK_PROMPTS: Record<ChatMode, Array<{ title: string, desc: string }>> = {
+  general: [
     { title: "Synthesize Data", desc: "Turn my meeting notes into 5 key bullet points." },
     { title: "Creative Brainstorm", desc: "Generate 3 taglines for a new brand." },
     { title: "Check Facts", desc: "Compare key differences between diets." }
   ],
-  food:      [
+  food: [
     { title: "Protein Needs", desc: "How much protein do I need daily?" },
     { title: "Veg Sources", desc: "Best vegetarian protein sources." },
     { title: "Diet Plan", desc: "Suggest a 1500 cal diet plan." }
@@ -69,12 +68,12 @@ const QUICK_PROMPTS: Record<ChatMode, Array<{title: string, desc: string}>> = {
     { title: "Focus Blocks", desc: "Schedule study at 9-11am." },
     { title: "Optimization", desc: "What's my most productive time?" }
   ],
-  fitness:   [
+  fitness: [
     { title: "Weight Loss", desc: "Best workout for weight loss." },
     { title: "Muscle Gain", desc: "How to build muscle fast." },
     { title: "Nutrition", desc: "Pre-workout meal ideas." }
   ],
-  reports:   [
+  reports: [
     { title: "Cholesterol", desc: "Explain my cholesterol values." },
     { title: "Hemoglobin", desc: "What does low hemoglobin mean?" },
     { title: "Blood Sugar", desc: "Is my blood sugar normal?" }
@@ -91,7 +90,7 @@ function ProposalCard({ action, onAccept, onReject }: { action: any, onAccept: (
   if (!action || !action.action) return null;
   const isMealPlan = action.action === "propose_meal_plan";
   const isTodo = action.action === "propose_todo";
-  
+
   if (!isMealPlan && !isTodo) return null;
 
   return (
@@ -102,7 +101,7 @@ function ProposalCard({ action, onAccept, onReject }: { action: any, onAccept: (
           {isMealPlan ? "Meal Plan Update Proposed" : "Schedule Update Proposed"}
         </h4>
       </div>
-      
+
       <div className="text-[13px] text-ink/80 mb-4 bg-surface p-3 rounded-lg border border-line/50">
         {isMealPlan && action.proposal && (
           <pre className="whitespace-pre-wrap font-sans text-xs">
@@ -116,7 +115,7 @@ function ProposalCard({ action, onAccept, onReject }: { action: any, onAccept: (
           </div>
         )}
       </div>
-      
+
       <div className="flex gap-2">
         <Button onClick={onAccept} size="sm" className="w-full bg-primary hover:bg-primary/90 text-white shadow-sm">
           Accept
@@ -143,20 +142,8 @@ export default function XomniPage() {
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [ttsEnabled, setTtsEnabled] = useState(true);
-  const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
 
-  // Profile / TopBar state
-  const [me, setMe] = useState<Me | null>(null);
-  const [profileOpen, setProfileOpen] = useState(false);
-  const profileMenuRef = useRef<HTMLDivElement>(null);
-
-  // TODO (AI Profile slice): wire Your-AI-Profile modal to these hooks.
-  // Added to unblock build — the "Your AI Profile" button references them.
-  const [userPromptPrefix] = useState("");
-  const [promptDraft, setPromptDraft] = useState("");
-  void promptDraft;
-  const [promptOpen, setPromptOpen] = useState(false);
-  void promptOpen;
+  // Removed duplicate profile states
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -171,17 +158,8 @@ export default function XomniPage() {
   useEffect(() => {
     let cancelled = false;
     void loadConversations();
-    
-    const loadMe = async () => {
-      const token = getAccessToken();
-      const headers: Record<string, string> = {};
-      if (token) headers.Authorization = `Bearer ${token}`;
-      const { data } = await apiClient<Me>("/api/v1/auth/me", { headers });
-      if (!cancelled && data?.email) {
-        setMe(data);
-      }
-    };
-    void loadMe();
+
+
 
     return () => { cancelled = true; };
   }, []);
@@ -200,32 +178,7 @@ export default function XomniPage() {
     } catch { /* silent */ }
   };
 
-  useEffect(() => {
-    if (!profileOpen) return;
-    const onClickOutside = (e: MouseEvent) => {
-      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target as Node)) setProfileOpen(false);
-    };
-    const onEsc = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setProfileOpen(false);
-    };
-    document.addEventListener("mousedown", onClickOutside);
-    document.addEventListener("keydown", onEsc);
-    return () => {
-      document.removeEventListener("mousedown", onClickOutside);
-      document.removeEventListener("keydown", onEsc);
-    };
-  }, [profileOpen]);
 
-  const handleLogout = async () => {
-    setProfileOpen(false);
-    await apiClient("/api/v1/auth/logout", { method: "POST", body: "{}" });
-    setAccessToken(null);
-    router.replace("/login");
-    router.refresh();
-  };
-
-  const initial = (me?.full_name?.trim()?.[0] || me?.handle?.[0] || me?.email?.[0] || "A").toUpperCase();
-  const displayName = me?.full_name || me?.handle || me?.email || "Account";
 
   // ── TTS helper ──────────────────────────────────────────────────────────
   const speak = (text: string) => {
@@ -308,7 +261,7 @@ export default function XomniPage() {
             if (line.startsWith("data: ")) {
               try {
                 const payload = JSON.parse(line.slice(6));
-                
+
                 if (currentEvent === "meta") {
                   if (payload.action) {
                     setMessages((prev) =>
@@ -370,8 +323,8 @@ export default function XomniPage() {
       const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
         ? "audio/webm;codecs=opus"
         : MediaRecorder.isTypeSupported("audio/webm")
-        ? "audio/webm"
-        : "audio/ogg";
+          ? "audio/webm"
+          : "audio/ogg";
 
       const recorder = new MediaRecorder(stream, { mimeType });
       audioChunksRef.current = [];
@@ -470,7 +423,7 @@ export default function XomniPage() {
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-1 w-full overflow-hidden bg-paper">
-      
+
       {/* ── Left Sidebar (History & Nav) ───────────────────────── */}
       <aside
         className={cn(
@@ -486,9 +439,9 @@ export default function XomniPage() {
             </div>
             <h2 className="font-semibold text-ink text-[15px] tracking-tight">Xomni</h2>
           </div>
-          
-          <Button 
-            onClick={startNewChat} 
+
+          <Button
+            onClick={startNewChat}
             className="w-full justify-start gap-2 bg-ink text-paper hover:bg-ink/90 rounded-xl h-11 shadow-sm"
           >
             <Plus className="h-4 w-4" />
@@ -497,9 +450,9 @@ export default function XomniPage() {
 
           <div className="relative">
             <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-            <input 
-              className="w-full bg-mist/50 border border-transparent rounded-xl pl-9 pr-8 py-2 text-[13px] outline-none focus:bg-surface focus:border-line/50 focus:ring-2 focus:ring-primary/10 transition-all text-ink placeholder:text-muted" 
-              placeholder="Search" 
+            <input
+              className="w-full bg-mist/50 border border-transparent rounded-xl pl-9 pr-8 py-2 text-[13px] outline-none focus:bg-surface focus:border-line/50 focus:ring-2 focus:ring-primary/10 transition-all text-ink placeholder:text-muted"
+              placeholder="Search"
             />
           </div>
         </div>
@@ -540,37 +493,22 @@ export default function XomniPage() {
           )}
         </div>
 
-        {/* Preferences / AI Profile */}
-        <div className="p-4 shrink-0">
-          <button 
-            onClick={() => { setPromptDraft(userPromptPrefix); setPromptOpen(true); }}
-            className="w-full flex items-center gap-3 p-2 rounded-xl hover:bg-mist/50 transition-colors"
-          >
-            <div className="h-8 w-8 rounded-full bg-gradient-to-tr from-amber-200 to-rose-200 flex items-center justify-center shrink-0">
-              <Settings2 className="h-4 w-4 text-rose-800" />
-            </div>
-            <div className="flex-1 text-left min-w-0">
-              <p className="text-[13px] font-medium text-ink truncate">Your AI Profile</p>
-              <p className="text-[11px] text-muted truncate">Set dietary & fitness goals</p>
-            </div>
-            <ChevronRight className="h-4 w-4 text-muted shrink-0" />
-          </button>
-        </div>
+
       </aside>
 
       {/* ── Main Chat Area ────────────────────────────────────────────── */}
       <main className="flex-1 flex flex-col relative min-w-0 bg-paper">
-        
+
         {/* Header - seamlessly integrated */}
         <header className="h-16 shrink-0 flex items-center justify-between px-6 z-20 bg-surface/50 backdrop-blur border-b border-line/30">
           <div className="flex items-center gap-2">
             <button onClick={() => setLeftOpen(!leftOpen)} className="md:hidden p-2 -ml-2 rounded-xl text-muted hover:bg-mist">
               <Menu className="h-5 w-5" />
             </button>
-            
+
             {/* Mode Dropdown */}
             <div className="relative">
-              <button 
+              <button
                 onClick={() => setModeDropdown(!modeDropdown)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-mist transition-colors text-[13px] font-medium text-ink"
               >
@@ -580,7 +518,7 @@ export default function XomniPage() {
                 Xomni {MODE_META[mode].label}
                 <ChevronRight className={cn("h-3 w-3 text-muted transition-transform", modeDropdown && "rotate-90")} />
               </button>
-              
+
               {modeDropdown && (
                 <div className="absolute top-full left-0 mt-1 w-48 bg-surface border border-line rounded-xl shadow-lift py-1 z-50">
                   {(Object.keys(MODE_META) as ChatMode[]).map((m) => (
@@ -597,16 +535,19 @@ export default function XomniPage() {
               )}
             </div>
           </div>
-          
+
           <div className="flex items-center gap-3">
             <button
-              onClick={() => setIsVoiceModalOpen(true)}
-              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground text-[12px] font-medium rounded-lg hover:bg-primary-hover shadow-sm transition-all"
+              onClick={toggleVoice}
+              className={cn(
+                "hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium rounded-lg shadow-sm transition-all",
+                voiceState === "recording" ? "bg-rose-500 text-white animate-pulse" : "bg-primary text-primary-foreground hover:bg-primary-hover"
+              )}
             >
-              <Radio className="h-3.5 w-3.5 animate-pulse" />
-              LiveKit Voice Talk
+              <Radio className={cn("h-3.5 w-3.5", voiceState === "recording" ? "animate-ping" : "animate-pulse")} />
+              {voiceState === "recording" ? "Listening..." : "Voice Talk"}
             </button>
-            <button 
+            <button
               onClick={() => setTtsEnabled(!ttsEnabled)}
               className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-ink text-paper text-[12px] font-medium rounded-lg hover:bg-ink/90 transition-colors"
             >
@@ -615,53 +556,14 @@ export default function XomniPage() {
             </button>
             <div className="h-6 w-px bg-line/60 mx-1 hidden sm:block" />
             <ThemeToggle className="rounded-xl p-2 text-muted hover:bg-mist hover:text-ink" />
-            
-            {/* Profile Dropdown imported from TopBar logic */}
-            <div className="relative" ref={profileMenuRef}>
-              <button
-                type="button"
-                onClick={() => setProfileOpen((v) => !v)}
-                className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-soft text-sm font-semibold text-primary ring-1 ring-line/30 transition hover:bg-primary-soft/80"
-              >
-                {initial}
-              </button>
-              {profileOpen ? (
-                <div
-                  role="menu"
-                  className="absolute right-0 z-50 mt-2 w-64 overflow-hidden rounded-2xl border border-line bg-surface p-2 shadow-lift"
-                >
-                  <div className="rounded-xl bg-mist/50 px-3 py-3">
-                    <p className="truncate text-sm font-semibold text-ink" title={displayName}>
-                      {displayName}
-                    </p>
-                    {me?.email ? <p className="truncate text-xs text-muted">{me.email}</p> : null}
-                    {me?.role ? <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-primary">{me.role.replaceAll("_", " ")}</p> : null}
-                  </div>
-                  <div className="mt-2 grid gap-1">
-                    <Link
-                      href="/app/profile"
-                      onClick={() => setProfileOpen(false)}
-                      className="rounded-xl px-3 py-2 text-sm font-medium text-ink hover:bg-mist"
-                    >
-                      View profile
-                    </Link>
-                    <button
-                      type="button"
-                      onClick={handleLogout}
-                      className="rounded-xl px-3 py-2 text-left text-sm font-semibold text-critical hover:bg-critical/10"
-                    >
-                      Logout
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-            </div>
+
+
           </div>
         </header>
 
         {/* Content Area */}
         <div className="flex-1 flex flex-col relative min-w-0 bg-paper overflow-hidden">
-          
+
           <div className="flex-1 overflow-y-auto no-scrollbar relative flex flex-col">
             {isEmpty ? (
               // ── EMPTY STATE (Cortex Style) ──
@@ -671,7 +573,7 @@ export default function XomniPage() {
                 <div className="relative z-10 h-16 w-16 rounded-full bg-gradient-to-br from-white to-primary-soft shadow-lg shadow-primary/10 flex items-center justify-center mb-6 border border-white/50">
                   <Sparkles className="h-6 w-6 text-primary" />
                 </div>
-              
+
                 <h1 className="text-2xl sm:text-3xl font-display font-medium text-primary text-center mb-1">
                   Hello there
                 </h1>
@@ -683,124 +585,127 @@ export default function XomniPage() {
               // ── ACTIVE CHAT STATE ──
               <div className="flex-1 flex flex-col max-w-3xl mx-auto w-full px-4 pt-6 pb-6">
                 <div className="space-y-6">
-                {messages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={cn(
-                      "flex gap-4",
-                      message.role === "user" ? "justify-end" : "justify-start"
-                    )}
-                  >
-                    {message.role === "assistant" && (
-                      <div className="h-8 w-8 shrink-0 rounded-full bg-gradient-to-br from-primary to-violet-600 flex items-center justify-center shadow-sm">
-                        <Sparkles className="h-4 w-4 text-white" />
-                      </div>
-                    )}
+                  {messages.map((message) => (
                     <div
+                      key={message.id}
                       className={cn(
-                        "max-w-[85%] sm:max-w-[80%]",
-                        message.role === "user" ? "items-end" : "items-start"
+                        "flex gap-4",
+                        message.role === "user" ? "justify-end" : "justify-start"
                       )}
                     >
-                      <div className={cn(
-                        "px-5 py-3.5 text-[14px] leading-relaxed",
-                        message.role === "user"
-                          ? "bg-mist rounded-[1.5rem] text-ink"
-                          : "bg-transparent text-ink"
-                      )}>
-                        {message.role === "assistant" ? (
-                          <div className="prose prose-sm max-w-none prose-p:my-2 prose-headings:mt-4 prose-headings:mb-2 prose-headings:font-display prose-headings:text-ink prose-a:text-primary">
-                            {message.content.split("\n").map((line, i) => {
-                              const bold = line.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
-                              return (
-                                <p
-                                  key={i}
-                                  className={line.startsWith("- ") ? "ml-4" : ""}
-                                  dangerouslySetInnerHTML={{ __html: bold || "&nbsp;" }}
-                                />
-                              );
-                            })}
-                            {message.streaming && (
-                              <span className="inline-flex items-center gap-1 ml-1 h-4">
-                                <span className="h-1.5 w-1.5 rounded-full bg-ink/40 animate-bounce" style={{ animationDuration: "700ms" }} />
-                                <span className="h-1.5 w-1.5 rounded-full bg-ink/40 animate-bounce" style={{ animationDelay: "140ms", animationDuration: "700ms" }} />
-                                <span className="h-1.5 w-1.5 rounded-full bg-ink/40 animate-bounce" style={{ animationDelay: "280ms", animationDuration: "700ms" }} />
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          <p className="whitespace-pre-wrap">{message.content}</p>
+                      {message.role === "assistant" && (
+                        <div className="h-8 w-8 shrink-0 rounded-full bg-gradient-to-br from-primary to-violet-600 flex items-center justify-center shadow-sm">
+                          <Sparkles className="h-4 w-4 text-white" />
+                        </div>
+                      )}
+                      <div
+                        className={cn(
+                          "max-w-[85%] sm:max-w-[80%]",
+                          message.role === "user" ? "items-end" : "items-start"
                         )}
-                        {message.action && message.role === "assistant" && !message.streaming && (
-                          <ProposalCard 
-                            action={message.action}
-                            onAccept={async () => {
-                              try {
-                                const token = getAccessToken();
-                                if (message.action.action === "propose_meal_plan") {
-                                  await fetch("/api/v1/nutrition/meal-plan/save", {
-                                    method: "POST",
-                                    headers: {
-                                      "Content-Type": "application/json",
-                                      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                                    },
-                                    body: JSON.stringify({
-                                      plan_json: message.action.proposal,
-                                      created_by: "XOMNI"
-                                    }),
-                                  });
-                                } else if (message.action.action === "propose_todo") {
-                                  await fetch("/api/v1/time/todos", {
-                                    method: "POST",
-                                    headers: {
-                                      "Content-Type": "application/json",
-                                      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                                    },
-                                    body: JSON.stringify({
-                                      title: message.action.title,
-                                      due_date: new Date().toISOString().split("T")[0],
-                                      priority: message.action.priority || "normal",
-                                      created_by: "XOMNI"
-                                    }),
-                                  });
+                      >
+                        <div className={cn(
+                          "px-5 py-3.5 text-[14px] leading-relaxed",
+                          message.role === "user"
+                            ? "bg-mist rounded-[1.5rem] text-ink"
+                            : "bg-transparent text-ink"
+                        )}>
+                          {message.role === "assistant" ? (
+                            <div className="prose prose-sm max-w-none prose-p:my-2 prose-headings:mt-4 prose-headings:mb-2 prose-headings:font-display prose-headings:text-ink prose-a:text-primary">
+                              {message.content ? message.content.split("\n").map((line, i) => {
+                                const bold = line.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+                                return (
+                                  <p
+                                    key={i}
+                                    className={line.startsWith("- ") ? "ml-4" : ""}
+                                    dangerouslySetInnerHTML={{ __html: bold || "&nbsp;" }}
+                                  />
+                                );
+                              }) : null}
+                              {message.streaming && (
+                                <div className={cn("flex items-center", message.content ? "mt-2" : "mt-0")}>
+                                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-primary/15 to-violet-500/15 border border-primary/20 shadow-[0_0_15px_rgba(var(--primary),0.15)] relative overflow-hidden">
+                                    <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-[shimmer_2s_infinite] -skew-x-12" />
+                                    <span className="h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_8px_rgba(var(--primary),0.8)] animate-bounce" style={{ animationDuration: "800ms" }} />
+                                    <span className="h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_8px_rgba(var(--primary),0.8)] animate-bounce" style={{ animationDelay: "150ms", animationDuration: "800ms" }} />
+                                    <span className="h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_8px_rgba(var(--primary),0.8)] animate-bounce" style={{ animationDelay: "300ms", animationDuration: "800ms" }} />
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <p className="whitespace-pre-wrap">{message.content}</p>
+                          )}
+                          {message.action && message.role === "assistant" && !message.streaming && (
+                            <ProposalCard
+                              action={message.action}
+                              onAccept={async () => {
+                                try {
+                                  const token = getAccessToken();
+                                  if (message.action.action === "propose_meal_plan") {
+                                    await fetch("/api/v1/nutrition/meal-plan/save", {
+                                      method: "POST",
+                                      headers: {
+                                        "Content-Type": "application/json",
+                                        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                                      },
+                                      body: JSON.stringify({
+                                        plan_json: message.action.proposal,
+                                        created_by: "XOMNI"
+                                      }),
+                                    });
+                                  } else if (message.action.action === "propose_todo") {
+                                    await fetch("/api/v1/time/todos", {
+                                      method: "POST",
+                                      headers: {
+                                        "Content-Type": "application/json",
+                                        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                                      },
+                                      body: JSON.stringify({
+                                        title: message.action.title,
+                                        due_date: new Date().toISOString().split("T")[0],
+                                        priority: message.action.priority || "normal",
+                                        created_by: "XOMNI"
+                                      }),
+                                    });
+                                  }
+                                  // Add a system response back to chat
+                                  setMessages(prev => [...prev, {
+                                    id: `${Date.now()}-sys`,
+                                    role: "user",
+                                    content: "I have accepted this proposal.",
+                                    createdAt: new Date()
+                                  }]);
+                                } catch (e) {
+                                  console.error(e);
                                 }
-                                // Add a system response back to chat
+                              }}
+                              onReject={() => {
                                 setMessages(prev => [...prev, {
                                   id: `${Date.now()}-sys`,
                                   role: "user",
-                                  content: "I have accepted this proposal.",
+                                  content: "I reject this proposal. Let's adjust it.",
                                   createdAt: new Date()
                                 }]);
-                              } catch(e) {
-                                console.error(e);
-                              }
-                            }}
-                            onReject={() => {
-                              setMessages(prev => [...prev, {
-                                id: `${Date.now()}-sys`,
-                                role: "user",
-                                content: "I reject this proposal. Let's adjust it.",
-                                createdAt: new Date()
-                              }]);
-                            }}
-                          />
+                              }}
+                            />
+                          )}
+                        </div>
+                        {message.role === "assistant" && (
+                          <div className="flex items-center gap-2 mt-2 pl-2">
+                            <button className="text-[11px] font-medium text-muted hover:text-ink transition-colors">Copy</button>
+                            <span className="text-muted/30">•</span>
+                            <button className="text-[11px] font-medium text-muted hover:text-ink transition-colors">Retry</button>
+                          </div>
                         )}
                       </div>
-                      {message.role === "assistant" && (
-                        <div className="flex items-center gap-2 mt-2 pl-2">
-                          <button className="text-[11px] font-medium text-muted hover:text-ink transition-colors">Copy</button>
-                          <span className="text-muted/30">•</span>
-                          <button className="text-[11px] font-medium text-muted hover:text-ink transition-colors">Retry</button>
-                        </div>
-                      )}
                     </div>
-                  </div>
-                ))}
-                {error && (
-                  <div className="flex justify-center">
-                    <p className="text-[12px] text-critical bg-critical/10 rounded-lg px-4 py-2 font-medium">{error}</p>
-                  </div>
-                )}
+                  ))}
+                  {error && (
+                    <div className="flex justify-center">
+                      <p className="text-[12px] text-critical bg-critical/10 rounded-lg px-4 py-2 font-medium">{error}</p>
+                    </div>
+                  )}
                   <div ref={bottomRef} className="h-4" />
                 </div>
               </div>
@@ -809,14 +714,14 @@ export default function XomniPage() {
 
           {/* Unified Input Box (Docked statically at bottom) */}
           <div className="shrink-0 w-full bg-paper px-4 pb-6 pt-2 z-30">
-              <div className="max-w-3xl mx-auto relative">
+            <div className="max-w-3xl mx-auto relative">
               {(voiceError || voiceState === "recording" || voiceState === "transcribing") && (
                 <div className="flex justify-center mb-3">
                   <div className={cn(
                     "text-[11px] rounded-full px-4 py-1.5 flex items-center gap-2 shadow-sm font-medium backdrop-blur",
                     voiceState === "recording" ? "bg-rose-500/90 text-white animate-pulse" :
-                    voiceState === "transcribing" ? "bg-amber-100/90 text-amber-800 border border-amber-200" :
-                    "bg-critical/90 text-white"
+                      voiceState === "transcribing" ? "bg-amber-100/90 text-amber-800 border border-amber-200" :
+                        "bg-critical/90 text-white"
                   )}>
                     {voiceState === "recording" && <><Mic className="h-3 w-3" /> Recording… tap mic to stop</>}
                     {voiceState === "transcribing" && <><span className="h-3 w-3 animate-spin rounded-full border-2 border-amber-600 border-t-transparent" /> Transcribing…</>}
@@ -825,7 +730,10 @@ export default function XomniPage() {
                 </div>
               )}
 
-              <div className="bg-surface border border-line/60 shadow-ambient rounded-[1.25rem] p-1.5 flex items-end gap-1 sm:gap-2 relative focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/40 transition-all">
+              <div className={cn(
+                "bg-surface border border-line/60 shadow-ambient rounded-[1.25rem] p-1.5 flex items-end gap-1 sm:gap-2 relative focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/40 transition-all",
+                voiceState === "recording" && "ring-2 ring-rose-500/30 border-rose-500/50 shadow-[0_0_20px_rgba(244,63,94,0.15)]"
+              )}>
                 <button className="h-10 w-10 shrink-0 rounded-full flex items-center justify-center text-muted hover:bg-mist hover:text-ink transition-colors mb-0.5" title="Attach file">
                   <Link2 className="h-4 w-4" />
                 </button>
@@ -845,11 +753,16 @@ export default function XomniPage() {
 
                 <div className="flex items-center gap-1 mb-0.5 pr-1">
                   <button
-                    onClick={() => setIsVoiceModalOpen(true)}
-                    className="h-10 w-10 shrink-0 rounded-full flex items-center justify-center bg-primary/10 text-primary hover:bg-primary/20 transition-all"
-                    title="Start LiveKit Voice Talk"
+                    onClick={toggleVoice}
+                    className={cn(
+                      "h-10 w-10 shrink-0 rounded-full flex items-center justify-center transition-all",
+                      voiceState === "recording"
+                        ? "bg-rose-500 text-white shadow-[0_0_15px_rgba(244,63,94,0.4)] animate-pulse"
+                        : "bg-primary/10 text-primary hover:bg-primary/20"
+                    )}
+                    title={voiceState === "recording" ? "Stop Voice Talk" : "Start Voice Talk"}
                   >
-                    <Mic className="h-4 w-4" />
+                    {voiceState === "recording" ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
                   </button>
 
                   <Button
@@ -870,28 +783,6 @@ export default function XomniPage() {
         </div>
       </main>
 
-      <LiveKitVoiceModal
-        isOpen={isVoiceModalOpen}
-        onClose={() => setIsVoiceModalOpen(false)}
-        conversationId={activeConvId}
-        mode={mode}
-        onMessageAdded={(msg) => {
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: Math.random().toString(36).substring(7),
-              role: msg.role,
-              content: msg.content,
-              createdAt: new Date(),
-              action: msg.action,
-            },
-          ]);
-        }}
-        onConversationCreated={(id) => {
-          setActiveConvId(id);
-          void loadConversations();
-        }}
-      />
     </div>
   );
 }

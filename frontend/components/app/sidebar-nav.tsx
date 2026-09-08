@@ -111,9 +111,9 @@ const mainNav = [
   { href: "/app", label: "Dashboard", icon: icons.dashboard },
   { href: "/app/time", label: "Time Management", icon: icons.time },
   { href: "/app/food", label: "Food", icon: icons.food },
-  { href: "/app/learn", label: "Learn", icon: icons.learn },
   { href: "/app/fitness", label: "Fitness", icon: icons.fitness },
   { href: "/app/reports", label: "Reports", icon: icons.reports },
+  { href: "/app/learn", label: "Learn", icon: icons.learn },
 ];
 
 const bottomNav = [

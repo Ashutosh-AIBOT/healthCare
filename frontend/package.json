@@ -11,8 +11,12 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
+    "@livekit/components-core": "^0.12.15",
+    "@livekit/components-react": "^2.9.24",
     "clsx": "^2.1.1",
     "framer-motion": "^11.15.0",
+    "livekit-client": "^2.22.3",
+    "lucide-react": "^1.41.0",
     "next": "^15.5.25",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

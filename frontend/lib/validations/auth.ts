@@ -10,10 +10,15 @@ export const passwordSchema = z
 
 export const handleSchema = z
   .string()
-  .min(3)
-  .max(30)
-  .regex(/^[a-z][a-z0-9_]*$/, "Start with a letter; use a-z, 0-9, _ only")
-  .transform((v) => v.toLowerCase());
+  .trim()
+  .transform((v) => v.toLowerCase())
+  .pipe(
+    z
+      .string()
+      .min(3, "At least 3 characters")
+      .max(30)
+      .regex(/^[a-z][a-z0-9_]{2,29}$/, "Start with a letter; use a-z, 0-9, _ only"),
+  );
 
 export const registerSchema = z
   .object({
@@ -34,7 +39,11 @@ export const registerSchema = z
 export const loginSchema = z.object({
   email: z.string().email("Enter a valid email"),
   password: z.string().min(1, "Password is required"),
-  totp_code: z.string().max(12).optional(),
+  totp_code: z
+    .string()
+    .max(12)
+    .optional()
+    .refine((v) => !v || /^\d{6,12}$/.test(v), "Enter a valid 6-digit code"),
 });
 
 export const verifyOtpSchema = z.object({

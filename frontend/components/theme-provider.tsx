@@ -27,15 +27,25 @@ function readInitialTheme(): { theme: Theme; resolved: "light" | "dark" } {
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = React.useState(readInitialTheme);
+  const [state, setState] = React.useState<{ theme: Theme; resolved: "light" | "dark" }>(() => ({
+    theme: "system",
+    resolved: "light",
+  }));
+  const [mounted, setMounted] = React.useState(false);
 
   React.useEffect(() => {
-    const { theme, resolved } = state;
+    setState(readInitialTheme());
+    setMounted(true);
+  }, []);
+
+  React.useEffect(() => {
+    if (!mounted) return;
+    const { resolved } = state;
     document.documentElement.classList.toggle("dark", resolved === "dark");
     document.documentElement.setAttribute("data-theme", resolved);
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute("content", resolved === "dark" ? "#0e1b20" : "#fdfcfa");
-  }, [state.resolved]);
+  }, [state.resolved, mounted]);
 
   const setTheme = React.useCallback((t: Theme) => {
     localStorage.setItem("aarogya-theme", t);
@@ -55,6 +65,14 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     m.addEventListener("change", onChange);
     return () => m.removeEventListener("change", onChange);
   }, [state.theme]);
+
+  if (!mounted) {
+    return (
+      <ThemeCtx.Provider value={{ theme: "system", resolved: "light", setTheme: () => {} }}>
+        <div suppressHydrationWarning>{children}</div>
+      </ThemeCtx.Provider>
+    );
+  }
 
   return (
     <ThemeCtx.Provider value={{ theme: state.theme, resolved: state.resolved, setTheme }}>

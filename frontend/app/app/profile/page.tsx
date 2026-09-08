@@ -1,8 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { EmptyState, ErrorState, Skeleton } from "@/components/ui/card";
-import { apiClient } from "@/lib/auth-client";
+import { Skeleton } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { apiClient, getAccessToken, setAccessToken } from "@/lib/auth-client";
+import { Eye, EyeOff, CheckCircle2, AlertCircle, ExternalLink } from "lucide-react";
 
 type UserProfile = {
   id: string;
@@ -15,178 +18,372 @@ type UserProfile = {
   created_at: string;
 };
 
-type ConnectedAccount = {
-  id: string;
-  provider: string;
-  connected_at: string;
-};
+type ApiKeyItem = { id: string; provider: string; is_active: boolean; created_at: string };
 
-type Preference = {
-  id: string;
-  key: string;
-  value: string;
-  updated_at: string;
-};
+// ── Provider key config ───────────────────────────────────────────────────
+const AI_PROVIDERS = [
+  {
+    id: "nvidia",
+    label: "NVIDIA NIM",
+    subtitle: "Primary chat LLM (Nemotron-3.5)",
+    placeholder: "nvapi-...",
+    docsUrl: "https://build.nvidia.com/",
+    color: "text-emerald-600",
+    badge: "Chat",
+    badgeColor: "bg-emerald-100 text-emerald-700",
+  },
+  {
+    id: "groq",
+    label: "Groq",
+    subtitle: "Streaming + Whisper STT (voice input)",
+    placeholder: "gsk_...",
+    docsUrl: "https://console.groq.com/keys",
+    color: "text-amber-600",
+    badge: "Voice + Stream",
+    badgeColor: "bg-amber-100 text-amber-700",
+  },
+  {
+    id: "openai",
+    label: "OpenAI",
+    subtitle: "Fallback LLM (GPT-4o-mini)",
+    placeholder: "sk-...",
+    docsUrl: "https://platform.openai.com/api-keys",
+    color: "text-blue-600",
+    badge: "Fallback",
+    badgeColor: "bg-blue-100 text-blue-700",
+  },
+  {
+    id: "gemini",
+    label: "Google Gemini",
+    subtitle: "Fallback LLM (Gemini 1.5 Flash)",
+    placeholder: "AIza...",
+    docsUrl: "https://aistudio.google.com/app/apikey",
+    color: "text-violet-600",
+    badge: "Fallback",
+    badgeColor: "bg-violet-100 text-violet-700",
+  },
+];
 
 export default function ProfilePage() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [accounts, setAccounts] = useState<ConnectedAccount[] | null>(null);
-  const [preferences, setPreferences] = useState<Preference[] | null>(null);
+  const [apiKeys, setApiKeys] = useState<ApiKeyItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editHandle, setEditHandle] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
-    const [me, acc, prefs] = await Promise.all([
+    const token = getAccessToken();
+    if (!token) { setError("Please log in again."); return; }
+    const [me, keys] = await Promise.all([
       apiClient<UserProfile>("/api/v1/auth/me"),
-      apiClient<ConnectedAccount[]>("/api/v1/accounts"),
-      apiClient<Preference[]>("/api/v1/preferences"),
+      apiClient<ApiKeyItem[]>("/api/v1/profile/api-keys"),
     ]);
-    if (me.error) {
-      setError(me.error.detail || "Failed to load profile.");
-      setProfile(null);
-      return;
-    }
-    if (acc.error) {
-      setError(acc.error.detail || "Failed to load connected accounts.");
-      setAccounts([]);
-      return;
-    }
-    if (prefs.error) {
-      setError(prefs.error.detail || "Failed to load preferences.");
-      setPreferences([]);
-      return;
-    }
-    setProfile(me.data || null);
-    setAccounts(acc.data || []);
-    setPreferences(prefs.data || []);
+    if (me.error || !me.data) { setError(me.error?.detail || "Failed to load profile."); return; }
+    setProfile(me.data);
+    setEditName(me.data.full_name || "");
+    setEditHandle(me.data.handle || "");
+    setApiKeys(keys.data || []);
   }, []);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useEffect(() => { void load(); }, [load]);
 
-  const isLoading = profile === null && accounts === null && preferences === null && !error;
+  const saveProfile = async () => {
+    setSaving(true);
+    setSaveMsg(null);
+    const res = await apiClient("/api/v1/profile/me", {
+      method: "PUT",
+      body: JSON.stringify({ full_name: editName, handle: editHandle }),
+    });
+    setSaving(false);
+    if (res.error) setSaveMsg(`Error: ${res.error.detail}`);
+    else { setSaveMsg("Saved!"); void load(); }
+  };
+
+  const isLoading = profile === null && apiKeys === null && !error;
 
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <div>
-          <Skeleton className="h-10 w-24" />
-          <Skeleton className="mt-2 h-5 w-72" />
-        </div>
+        <Skeleton className="h-10 w-48" />
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-28 w-full rounded-[1.75rem]" />
-          ))}
+          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-28 rounded-[1.75rem]" />)}
         </div>
-        <Skeleton className="h-64 w-full rounded-[1.75rem]" />
+        <Skeleton className="h-64 rounded-[1.75rem]" />
       </div>
     );
   }
 
+  const keysByProvider = Object.fromEntries((apiKeys || []).map((k) => [k.provider, k]));
+
   return (
-    <div className="space-y-8">
-      <div className="space-y-1">
+    <div className="space-y-8 pb-12">
+      <div>
         <h1 className="font-display text-3xl font-semibold tracking-tight text-ink">Profile</h1>
-        <p className="text-sm text-muted">Manage your personal details, preferences, and connected accounts.</p>
+        <p className="mt-1 text-sm text-muted">Manage your account, AI keys, and integrations.</p>
       </div>
 
-      {error ? <ErrorState description={error} onRetry={() => void load()} /> : null}
+      {error && (
+        <div className="rounded-2xl bg-critical/5 border border-critical/20 px-4 py-3 text-sm text-critical flex items-center gap-2">
+          <AlertCircle className="h-4 w-4 shrink-0" />{error}
+        </div>
+      )}
 
+      {/* ── Stats ── */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-[1.75rem] bg-surface p-6 shadow-card">
-          <p className="text-xs text-muted">Member Since</p>
-          <p className="mt-2 text-2xl font-semibold text-ink">
-            {profile?.created_at ? new Date(profile.created_at).getFullYear() : "—"}
-          </p>
-        </div>
-        <div className="rounded-[1.75rem] bg-surface p-6 shadow-card">
-          <p className="text-xs text-muted">Connected</p>
-          <p className="mt-2 text-2xl font-semibold text-ink">{accounts?.length ?? 0}</p>
-        </div>
-        <div className="rounded-[1.75rem] bg-surface p-6 shadow-card">
-          <p className="text-xs text-muted">Family</p>
-          <p className="mt-2 text-2xl font-semibold text-ink">—</p>
-        </div>
-        <div className="rounded-[1.75rem] bg-surface p-6 shadow-card">
-          <p className="text-xs text-muted">Reports</p>
-          <p className="mt-2 text-2xl font-semibold text-ink">—</p>
-        </div>
+        {[
+          { label: "Member Since", value: profile?.created_at ? new Date(profile.created_at).getFullYear() : "—" },
+          { label: "AI Keys", value: apiKeys?.filter((k) => k.is_active).length ?? 0 },
+          { label: "Verified", value: profile?.is_verified ? "✓" : "✗" },
+          { label: "2FA", value: profile?.totp_enabled ? "On" : "Off" },
+        ].map((s) => (
+          <div key={s.label} className="rounded-[1.75rem] bg-surface p-6 shadow-card">
+            <p className="text-xs text-muted">{s.label}</p>
+            <p className="mt-2 text-2xl font-semibold text-ink">{s.value}</p>
+          </div>
+        ))}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="rounded-[1.75rem] bg-surface p-6 shadow-card lg:col-span-2">
-          <h2 className="font-semibold text-ink">Account Details</h2>
-          {!profile ? (
-            <p className="mt-2 text-sm text-muted">Profile editing and preference controls will appear here.</p>
-          ) : (
-            <dl className="mt-4 grid gap-3 sm:grid-cols-2">
-              <div>
-                <dt className="text-xs text-muted">Full name</dt>
-                <dd className="text-sm font-semibold text-ink">{profile.full_name || "—"}</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-muted">Email</dt>
-                <dd className="text-sm font-semibold text-ink">{profile.email}</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-muted">Handle</dt>
-                <dd className="text-sm font-semibold text-ink">{profile.handle || "—"}</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-muted">Role</dt>
-                <dd className="text-sm font-semibold text-ink capitalize">{profile.role}</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-muted">Verified</dt>
-                <dd className="text-sm font-semibold text-ink">{profile.is_verified ? "Yes" : "No"}</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-muted">2FA</dt>
-                <dd className="text-sm font-semibold text-ink">{profile.totp_enabled ? "Enabled" : "Disabled"}</dd>
-              </div>
-            </dl>
-          )}
-        </div>
-        <div className="rounded-[1.75rem] bg-surface p-6 shadow-card">
-          <h2 className="font-semibold text-ink">Connected Accounts</h2>
-          {!accounts?.length ? (
-            <p className="mt-2 text-sm text-muted">
-              Manage linked providers and authentication methods.
-            </p>
-          ) : (
-            <ul className="mt-4 space-y-2">
-              {accounts.map((a) => (
-                <li key={a.id} className="flex items-center justify-between rounded-2xl bg-mist/60 px-4 py-2">
-                  <span className="text-sm font-semibold text-ink capitalize">{a.provider}</span>
-                  <span className="text-xs text-muted">
-                    {new Date(a.connected_at).toLocaleDateString()}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2 space-y-3">
-          <h2 className="font-semibold text-ink">Preferences</h2>
-          <div className="rounded-[1.75rem] bg-surface p-6 shadow-card">
-            {!preferences?.length ? (
-              <p className="text-sm text-muted">Theme, notifications, and privacy settings will load here.</p>
-            ) : (
-              <ul className="space-y-2">
-                {preferences.map((p) => (
-                  <li key={p.id} className="flex items-center justify-between rounded-2xl bg-mist/60 px-4 py-2">
-                    <span className="text-sm text-ink">{p.key}</span>
-                    <span className="text-sm font-semibold text-ink">{p.value}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
+      {/* ── Account details ── */}
+      <div className="rounded-[1.75rem] bg-surface p-6 shadow-card">
+        <h2 className="font-semibold text-ink mb-4">Account Details</h2>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="text-xs text-muted">Full Name</label>
+            <Input value={editName} onChange={(e) => setEditName(e.target.value)} className="mt-1" placeholder="Your name" />
+          </div>
+          <div>
+            <label className="text-xs text-muted">Handle</label>
+            <Input value={editHandle} onChange={(e) => setEditHandle(e.target.value)} className="mt-1" placeholder="@handle" />
+          </div>
+          <div>
+            <label className="text-xs text-muted">Email</label>
+            <p className="mt-1 text-sm font-medium text-ink">{profile?.email}</p>
+          </div>
+          <div>
+            <label className="text-xs text-muted">Role</label>
+            <p className="mt-1 text-sm font-medium text-ink capitalize">{profile?.role}</p>
           </div>
         </div>
+        <div className="mt-4 flex items-center gap-3">
+          <Button onClick={saveProfile} loading={saving} disabled={saving}>Save Changes</Button>
+          {saveMsg && <p className="text-sm text-healthy">{saveMsg}</p>}
+        </div>
+      </div>
+
+      {/* ── AI Provider Keys ── */}
+      <div className="rounded-[1.75rem] bg-surface p-6 shadow-card">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="font-semibold text-ink">AI Provider Keys</h2>
+          <span className="text-xs text-muted">Stored encrypted · never logged</span>
+        </div>
+        <p className="text-xs text-muted mb-6">
+          <strong>NVIDIA</strong> powers Xomni chat. <strong>Groq</strong> enables voice (Whisper STT) and fast streaming responses.
+        </p>
+        <div className="space-y-4">
+          {AI_PROVIDERS.map((provider) => {
+            const existing = keysByProvider[provider.id];
+            return (
+              <ProviderKeyRow
+                key={provider.id}
+                provider={provider}
+                existing={existing}
+                onSaved={() => void load()}
+              />
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── LiveKit ── */}
+      <div className="rounded-[1.75rem] bg-surface p-6 shadow-card">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="font-semibold text-ink">LiveKit Voice Sessions</h2>
+          <a href="https://cloud.livekit.io" target="_blank" rel="noopener" className="text-xs text-primary flex items-center gap-1 hover:underline">
+            Get credentials <ExternalLink className="h-3 w-3" />
+          </a>
+        </div>
+        <p className="text-xs text-muted mb-4">
+          LiveKit enables WebRTC audio capture for Xomni voice input. Set credentials in your server's <code>.env</code> file:
+          <code className="ml-1 bg-mist rounded px-1.5 py-0.5 text-[11px]">LIVEKIT_URL</code>
+          <code className="ml-1 bg-mist rounded px-1.5 py-0.5 text-[11px]">LIVEKIT_API_KEY</code>
+          <code className="ml-1 bg-mist rounded px-1.5 py-0.5 text-[11px]">LIVEKIT_API_SECRET</code>
+        </p>
+        <div className="rounded-2xl bg-mist/60 p-4 text-xs text-muted space-y-1">
+          <p>• Free tier: 10,000 minutes/month on LiveKit Cloud</p>
+          <p>• Or run locally: <code className="bg-surface px-1 rounded">docker run -p 7880:7880 livekit/livekit-server --dev</code></p>
+          <p>• Voice also works without LiveKit using browser's built-in MediaRecorder API</p>
+        </div>
+      </div>
+
+      {/* ── Telegram Integration ── */}
+      <div className="rounded-[1.75rem] bg-surface p-6 shadow-card">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="font-semibold text-ink">Telegram Integration</h2>
+          <a href="https://t.me/BotFather" target="_blank" rel="noopener" className="text-xs text-primary flex items-center gap-1 hover:underline">
+            Create Bot <ExternalLink className="h-3 w-3" />
+          </a>
+        </div>
+        <p className="text-xs text-muted mb-4">
+          Connect Xomni to Telegram. Message your bot and get AI responses. Chat history is saved automatically.
+        </p>
+        <TelegramKeyForm existing={keysByProvider["telegram"]} onSaved={() => void load()} />
+      </div>
+    </div>
+  );
+}
+
+// ── ProviderKeyRow component ──────────────────────────────────────────────
+function ProviderKeyRow({
+  provider,
+  existing,
+  onSaved,
+}: {
+  provider: typeof AI_PROVIDERS[number];
+  existing?: ApiKeyItem;
+  onSaved: () => void;
+}) {
+  const [key, setKey] = useState("");
+  const [show, setShow] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const save = async () => {
+    if (!key.trim()) return;
+    setSaving(true);
+    setErr(null);
+    setMsg(null);
+    const res = await apiClient<{ id: string }>("/api/v1/profile/api-keys/upsert", {
+      method: "POST",
+      body: JSON.stringify({ provider: provider.id, api_key: key }),
+    });
+    setSaving(false);
+    if (res.error) setErr(res.error.detail || "Failed to save.");
+    else { setMsg("Saved!"); setKey(""); onSaved(); }
+  };
+
+  return (
+    <div className="rounded-2xl border border-line bg-mist/30 p-4 space-y-3">
+      <div className="flex items-start justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-semibold text-ink">{provider.label}</p>
+            <span className={`text-[10px] rounded-full px-2 py-0.5 font-medium ${provider.badgeColor}`}>
+              {provider.badge}
+            </span>
+          </div>
+          <p className="text-xs text-muted mt-0.5">{provider.subtitle}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {existing?.is_active ? (
+            <span className="flex items-center gap-1 text-xs text-healthy">
+              <CheckCircle2 className="h-3.5 w-3.5" /> Active
+            </span>
+          ) : (
+            <span className="text-xs text-muted">Not set</span>
+          )}
+          <a href={provider.docsUrl} target="_blank" rel="noopener" className="text-muted hover:text-primary">
+            <ExternalLink className="h-3.5 w-3.5" />
+          </a>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <Input
+            type={show ? "text" : "password"}
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            placeholder={existing?.is_active ? "••••••••••••••• (update)" : provider.placeholder}
+            className="pr-10"
+            onKeyDown={(e) => e.key === "Enter" && void save()}
+          />
+          <button
+            type="button"
+            onClick={() => setShow((v) => !v)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-ink"
+          >
+            {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
+        </div>
+        <Button onClick={save} loading={saving} disabled={!key.trim() || saving} size="sm">
+          Save
+        </Button>
+      </div>
+      {err && <p className="text-xs text-critical">{err}</p>}
+      {msg && <p className="text-xs text-healthy">{msg}</p>}
+    </div>
+  );
+}
+
+// ── TelegramKeyForm component ─────────────────────────────────────────────
+function TelegramKeyForm({ existing, onSaved }: { existing?: ApiKeyItem; onSaved: () => void }) {
+  const [token, setToken] = useState("");
+  const [username, setUsername] = useState("");
+  const [show, setShow] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const save = async () => {
+    if (!token.trim()) return;
+    setSaving(true);
+    setErr(null);
+    setMsg(null);
+    // Save bot token as telegram provider key
+    const res = await apiClient<{ id: string }>("/api/v1/profile/api-keys/upsert", {
+      method: "POST",
+      body: JSON.stringify({ provider: "telegram", api_key: token }),
+    });
+    setSaving(false);
+    if (res.error) setErr(res.error.detail || "Failed to save.");
+    else { setMsg("Telegram bot token saved! Your bot is now active."); setToken(""); onSaved(); }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label className="text-xs text-muted">Bot Token</label>
+          <div className="relative mt-1">
+            <Input
+              type={show ? "text" : "password"}
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              placeholder={existing?.is_active ? "••••• (update token)" : "123456789:ABC..."}
+              className="pr-10"
+            />
+            <button type="button" onClick={() => setShow((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-ink">
+              {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
+          <p className="text-[11px] text-muted mt-1">From @BotFather → /newbot</p>
+        </div>
+        <div>
+          <label className="text-xs text-muted">Your Telegram Username (optional)</label>
+          <Input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="@yourusername" className="mt-1" />
+          <p className="text-[11px] text-muted mt-1">To restrict bot to your account only</p>
+        </div>
+      </div>
+      <div className="flex items-center gap-3">
+        <Button onClick={save} loading={saving} disabled={!token.trim() || saving}>
+          Save Telegram Bot
+        </Button>
+        {existing?.is_active && (
+          <span className="flex items-center gap-1 text-xs text-healthy">
+            <CheckCircle2 className="h-3.5 w-3.5" /> Bot active
+          </span>
+        )}
+      </div>
+      {err && <p className="text-xs text-critical">{err}</p>}
+      {msg && <p className="text-xs text-healthy">{msg}</p>}
+      <div className="rounded-2xl bg-mist/60 p-4 text-xs text-muted space-y-1">
+        <p>📱 <strong>How to use:</strong></p>
+        <p>1. Create bot with @BotFather → /newbot → copy token above</p>
+        <p>2. Message your bot on Telegram — Xomni responds using NVIDIA + Groq</p>
+        <p>3. All chat history is saved to your account</p>
       </div>
     </div>
   );

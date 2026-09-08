@@ -1,4 +1,4 @@
-"""Keyword-overlap RAG skeleton (no real embeddings required)."""
+"""Keyword-overlap RAG skeleton with LLM gateway integration."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai.gateway import LLMGateway, Provider, LLMResponse
 from app.models.documents import DocumentChunk, LabReportValue
 
 
@@ -74,8 +75,13 @@ async def build_cited_answer(
     member_id: uuid.UUID,
     question: str,
     document_id: uuid.UUID | None = None,
+    llm_gateway: LLMGateway | None = None,
 ) -> RagAnswer:
-    """Compose an explanation from lab_report_values + overlapping chunks."""
+    """Compose a cited answer from lab_report_values + overlapping chunks.
+
+    Uses the LLM gateway for generation if available, falling back to
+    keyword-overlap template generation.
+    """
     lv_q = select(LabReportValue).where(LabReportValue.member_id == member_id)
     if document_id is not None:
         lv_q = lv_q.where(LabReportValue.document_id == document_id)
@@ -132,6 +138,60 @@ async def build_cited_answer(
             "Upload a lab report for this member, then ask again."
         )
 
+    # Use LLM gateway for generation if available
+    if llm_gateway is not None:
+        try:
+            # Build a context string from the retrieved information
+            context = "\n".join(parts) if parts else question
+
+            llm_result: LLMResponse = await llm_gateway.complete(
+                prompt=f"""You are a helpful health assistant. Based on the following context from a lab report, provide a clear explanation of the user's question.
+
+Context:
+{context}
+
+Question: {question}
+
+Instructions:
+- Provide a helpful, informative response based ONLY on the context above
+- Do NOT provide any diagnosis, dosage, prognosis, or treatment advice
+- Include a medical disclaimer at the end
+- If the context doesn't contain enough information, state that clearly
+- Reference specific values by name when possible
+
+Response:""",
+                model="nvidia/nemotron-3.5-lightning-30b-a3b"
+            )
+
+            # Append the medical disclaimer
+            disclaimer = "These figures are explanations of what appears on the report, not a clinical interpretation. Discuss them with a qualified doctor."
+            full_text = llm_result.text + "\n\n" + disclaimer if not llm_result.text.endswith(disclaimer) else llm_result.text
+
+            # Convert LLMResponse citations to Citation dataclasses if needed
+            llm_citations = llm_result.citations or []
+            converted_citations: list[Citation] = []
+            for c in llm_citations:
+                if isinstance(c, Citation):
+                    converted_citations.append(c)
+                elif isinstance(c, dict):
+                    converted_citations.append(
+                        Citation(
+                            source=c.get("source", "chunk"),
+                            document_id=uuid.UUID(c.get("document_id", str(uuid.UUID(int=0)))),
+                            page=c.get("page"),
+                            label=c.get("label", ""),
+                        )
+                    )
+
+            return RagAnswer(
+                text=full_text,
+                citations=converted_citations,
+            )
+        except Exception:
+            # Fall back to template generation on error
+            pass
+
+    # Fallback: template-based answer (original behavior)
     parts.append(
         "These figures are explanations of what appears on the report, "
         "not a clinical interpretation. Discuss them with a qualified doctor."

@@ -24,6 +24,7 @@ export function RegisterForm() {
   const {
     register,
     handleSubmit,
+    setError,
     formState: { errors, isSubmitting },
   } = useForm<RegisterInput>({
     resolver: zodResolver(registerSchema),
@@ -32,21 +33,33 @@ export function RegisterForm() {
 
   const onSubmit = handleSubmit(async (values) => {
     setServerError(null);
-    const { error } = await apiClient("/api/auth/register", {
+    const { error } = await apiClient("/api/v1/auth/register", {
       method: "POST",
       body: JSON.stringify({
         full_name: values.full_name,
-        handle: values.handle,
+        handle: values.handle.toLowerCase().trim(),
         email: values.email,
         password: values.password,
         ...CONSENT,
       }),
     });
     if (error) {
+      if (error.code === "CONFLICT_DUPLICATE" && error.detail?.toLowerCase().includes("handle")) {
+        setError("handle", { message: error.detail });
+        return;
+      }
+      if (error.code === "AUTH_RATE_LIMITED" || error.status === 429) {
+        setServerError("Too many attempts. Please wait a few minutes and try again.");
+        return;
+      }
+      if (error.code === "AUTH_EMAIL_EXISTS" || error.status === 409) {
+        setError("email", { message: error.detail || "An account with this email already exists." });
+        return;
+      }
       setServerError(error.detail || "Could not create account.");
       return;
     }
-    router.push(`/verify?email=${encodeURIComponent(values.email)}`);
+    router.replace(`/verify?email=${encodeURIComponent(values.email)}`);
   });
 
   return (

@@ -71,6 +71,9 @@ class AuthService:
             # (OTP send itself is rate-limited to 3/hour in otp_service.)
             await db.execute(delete(PendingRegistration).where(PendingRegistration.email == email))
 
+            # Purge expired pendings so handle can be reused after TTL (fixes unique blocking)
+            await db.execute(delete(PendingRegistration).where(PendingRegistration.expires_at <= now))
+
             live_handle = await db.scalar(
                 select(PendingRegistration).where(
                     PendingRegistration.handle == payload.handle,
@@ -239,6 +242,7 @@ class AuthService:
                     detail="Verify your email before signing in.",
                 )
 
+            # TOTP enforcement: mandatory for provider roles, optional but enforced if enabled for any user
             if user.role in PROVIDER_ROLES:
                 if not user.totp_enabled:
                     raise AppError(
@@ -248,6 +252,13 @@ class AuthService:
                     )
                 from app.services.totp_service import totp_service
 
+                await check_rate_limit(f"auth:totp:{user.id}", limit=5, window_seconds=300)
+                if not totp_code or not await totp_service.verify_login_code(db, user, totp_code):
+                    raise AppError(code="TFA_INVALID", status=400, detail="Invalid authenticator or backup code.")
+            elif user.totp_enabled:
+                from app.services.totp_service import totp_service
+
+                await check_rate_limit(f"auth:totp:{user.id}", limit=5, window_seconds=300)
                 if not totp_code or not await totp_service.verify_login_code(db, user, totp_code):
                     raise AppError(code="TFA_INVALID", status=400, detail="Invalid authenticator or backup code.")
 
@@ -276,14 +287,24 @@ class AuthService:
                 ) from exc
 
             session = await db.get(Session, session_id)
-            if session is None or session.user_id != user_id or not session.is_active:
+            if session is None or session.user_id != user_id:
                 raise AppError(
                     code="AUTH_TOKEN_INVALID",
                     status=401,
                     detail="Invalid or expired refresh token.",
                 )
 
+            # Check hash mismatch *before* is_active so reuse is detected even on revoked sessions
             if session.refresh_token_hash != _hash_refresh_token(refresh_token):
+                await self._revoke_all_sessions(db, user_id)
+                raise AppError(
+                    code="AUTH_REFRESH_REUSED",
+                    status=401,
+                    detail="Refresh token reuse detected. All sessions revoked.",
+                )
+
+            if not session.is_active:
+                # Reuse of an already-rotated/revoked token — treat as reuse and revoke all
                 await self._revoke_all_sessions(db, user_id)
                 raise AppError(
                     code="AUTH_REFRESH_REUSED",

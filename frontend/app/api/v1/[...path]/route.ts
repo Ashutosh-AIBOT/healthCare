@@ -7,10 +7,10 @@ async function forward(req: NextRequest, pathParts: string[], method: string) {
   const path = `/api/v1/${pathParts.join("/")}`;
   const access = req.cookies.get("aarogya_access")?.value;
   const headers: HeadersInit = {};
-  if (access) headers.Authorization = `Bearer ${access}`;
-  // Prefer client Authorization if present (sessionStorage token)
+  // Prefer httpOnly cookie (secure) over client Authorization to avoid stale JS token overriding fresh cookie
   const clientAuth = req.headers.get("authorization");
-  if (clientAuth) headers.Authorization = clientAuth;
+  if (clientAuth && !access) headers.Authorization = clientAuth;
+  if (access) headers.Authorization = `Bearer ${access}`;
 
   const hasBody = method !== "GET" && method !== "HEAD";
   const body = hasBody ? await req.text() : undefined;

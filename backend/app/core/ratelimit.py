@@ -97,6 +97,23 @@ async def check_rate_limit(key: str, *, limit: int, window_seconds: int) -> None
     _check_memory(key, limit=limit, window_seconds=window_seconds, now=now)
 
 
+async def clear_rate_limit_state() -> None:
+    """Test helper: flush in-memory buckets and Redis rate-limit keys."""
+    with _lock:
+        _memory.clear()
+    r = await _redis()
+    if r is not None:
+        try:
+            # Remove only auth/otp rate-limit keys, leave other data
+            keys = []
+            for pattern in ("auth:*", "otp:*"):
+                keys.extend(await r.keys(pattern))
+            if keys:
+                await r.delete(*keys)
+        except Exception:
+            pass
+
+
 async def sleep_pad(target_ms: int = 200) -> None:
     """Pad response timing for enumeration-sensitive endpoints."""
     await asyncio.sleep(target_ms / 1000)

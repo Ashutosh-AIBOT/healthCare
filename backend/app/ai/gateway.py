@@ -1,27 +1,49 @@
-"""LLM Gateway with multi-provider support including NVIDIA NIM/Nemotron."""
+"""LLM Gateway — NVIDIA Nemotron (chat) + Groq (streaming LLM + Whisper STT).
+
+Architecture:
+  - NVIDIA Nemotron-3.5  →  primary chat LLM (non-streaming fallback)
+  - Groq LLaMA-3.3-70b  →  streaming chat responses (SSE, very fast)
+  - Groq Whisper         →  STT (voice → text)
+  - OpenAI / Gemini      →  fallback chain
+  - Mock                 →  CI / no-key demo
+"""
 
 from __future__ import annotations
 
-import httpx
+import asyncio
+import json
+import os
 from enum import Enum
-from typing import Any, AsyncIterator, Dict, Optional
+from typing import Any, AsyncIterator, Optional
 
+import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class Provider(str, Enum):
-    """Supported LLM providers."""
-
-    NVIDIA = "nvidia"  # NVIDIA NIM/Nemotron
+    NVIDIA = "nvidia"
+    GROQ = "groq"       # also used for STT
     OPENAI = "openai"
     GEMINI = "gemini"
-    GROQ = "groq"
     OLLAMA = "ollama"
     MOCK = "mock"
 
 
+# Default models per provider
+DEFAULT_MODELS = {
+    Provider.NVIDIA: "nvidia/nemotron-3.5-lightning-30b-a3b",
+    Provider.GROQ:   "llama-3.3-70b-versatile",   # fastest streaming model
+    Provider.OPENAI: "gpt-4o-mini",
+    Provider.GEMINI: "gemini-1.5-flash",
+    Provider.OLLAMA: "llama3",
+    Provider.MOCK:   "mock-model",
+}
+
+GROQ_STT_MODEL = "whisper-large-v3-turbo"  # best speed/accuracy ratio
+
+
 class LLMResponse:
-    """Standardized LLM response."""
+    """Standardised LLM response."""
 
     def __init__(
         self,
@@ -42,14 +64,14 @@ class LLMResponse:
 
 
 class LLMGateway:
-    """Gateway that routes calls to the appropriate LLM provider."""
+    """Routes LLM calls: NVIDIA for chat, Groq for streaming + STT."""
 
-    # Fallback chain: primary → secondary → ... → mock
+    # Primary: NVIDIA → Groq (streaming) → OpenAI → Gemini → Mock
     FALLBACK_CHAIN = [
         Provider.NVIDIA,
+        Provider.GROQ,
         Provider.OPENAI,
         Provider.GEMINI,
-        Provider.GROQ,
         Provider.OLLAMA,
         Provider.MOCK,
     ]
@@ -59,23 +81,44 @@ class LLMGateway:
         self.user_id = user_id
         self._provider_cache: Provider | None = None
 
-    async def _get_active_provider(self) -> Provider:
-        """Fetch the active provider from user's API keys in the database.
+    # ------------------------------------------------------------------
+    # Provider key resolution (DB → env → error)
+    # ------------------------------------------------------------------
 
-        Returns the Provider enum based on which key is set and active.
-        Falls back to MOCK if no key is configured.
-        """
-        # TODO: Query the api_keys table for the user's active keys
-        # For now, check environment
-        import os
-        nvidia_key = os.environ.get("NVIDIA_API_KEY")
-        if nvidia_key:
-            return Provider.NVIDIA
-        openai_key = os.environ.get("OPENAI_API_KEY")
-        if openai_key:
-            return Provider.OPENAI
-        # If no key, default to mock for demo
+    async def _get_key(self, provider: str) -> str | None:
+        """Fetch decrypted key from user's DB api_keys, then environment."""
+        if self.db and self.user_id:
+            try:
+                from app.services.api_key_service import get_active_api_key_raw
+                key = await get_active_api_key_raw(self.db, user_id=self.user_id, provider=provider)
+                if key:
+                    return key
+            except Exception:
+                pass
+        # Fall back to environment variable
+        env_map = {
+            "nvidia": ["NVIDIA_API_KEY", "LLM_API_KEY"],
+            "groq": ["GROQ_API_KEY"],
+            "openai": ["OPENAI_API_KEY"],
+            "gemini": ["GEMINI_API_KEY"],
+        }
+        for env_var in env_map.get(provider, []):
+            val = os.environ.get(env_var, "")
+            if val:
+                return val
+        return None
+
+    async def _get_active_provider(self) -> Provider:
+        """Return the best available provider based on configured keys."""
+        for p in [Provider.NVIDIA, Provider.GROQ, Provider.OPENAI, Provider.GEMINI]:
+            key = await self._get_key(p.value)
+            if key:
+                return p
         return Provider.MOCK
+
+    # ------------------------------------------------------------------
+    # Non-streaming completion (NVIDIA primary, Groq fallback)
+    # ------------------------------------------------------------------
 
     async def complete(
         self,
@@ -85,30 +128,22 @@ class LLMGateway:
         model: str | None = None,
         temperature: float = 0.7,
         max_tokens: int | None = None,
+        system_prompt: str | None = None,
     ) -> LLMResponse:
-        """Complete a prompt using the selected provider with fallback.
+        """Complete a prompt. NVIDIA is primary, Groq as first fallback."""
+        target = provider or await self._get_active_provider()
 
-        Routes to the specified provider, or the active user provider,
-        with automatic fallback through the chain if a call fails.
-        """
-        # Determine which provider to use
-        target_provider = provider or await self._get_active_provider()
-
-        # Build the fallback chain starting from the selected provider
-        if target_provider in self.FALLBACK_CHAIN:
-            start_idx = self.FALLBACK_CHAIN.index(target_provider)
-            chain = self.FALLBACK_CHAIN[start_idx:] + self.FALLBACK_CHAIN[:start_idx]
+        if target in self.FALLBACK_CHAIN:
+            start = self.FALLBACK_CHAIN.index(target)
+            chain = self.FALLBACK_CHAIN[start:] + self.FALLBACK_CHAIN[:start]
         else:
             chain = self.FALLBACK_CHAIN
 
         last_error: Exception | None = None
-
         for p in chain:
             try:
-                result = await self._call_provider(
-                    p, prompt, temperature=temperature, max_tokens=max_tokens
-                )
-                # Record the successful provider for analytics
+                result = await self._call(p, prompt, model=model, temperature=temperature,
+                                          max_tokens=max_tokens, system_prompt=system_prompt)
                 self._log_success(p, result)
                 return result
             except Exception as e:
@@ -116,95 +151,255 @@ class LLMGateway:
                 self._log_failure(p, e)
                 continue
 
-        # All providers failed - return degraded mock response
         return LLMResponse(
-            text="AI service temporarily unavailable. Please add a valid API key in your profile settings.",
+            text="AI service temporarily unavailable. Please check your API keys in Profile settings.",
             degraded=True,
             provider=Provider.MOCK,
         )
 
-    async def _call_provider(
+    # ------------------------------------------------------------------
+    # Groq streaming (SSE) — primary streaming path
+    # ------------------------------------------------------------------
+
+    async def stream_groq(
+        self,
+        prompt: str,
+        *,
+        model: str | None = None,
+        temperature: float = 0.7,
+        max_tokens: int = 1024,
+        system_prompt: str | None = None,
+    ) -> AsyncIterator[str]:
+        """Stream tokens from Groq via SSE. Yields raw text chunks.
+
+        Falls back to NVIDIA non-streaming if Groq key not available.
+        """
+        groq_key = await self._get_key("groq")
+        if groq_key:
+            async for chunk in self._stream_groq_sse(
+                prompt, groq_key, model=model or DEFAULT_MODELS[Provider.GROQ],
+                temperature=temperature, max_tokens=max_tokens,
+                system_prompt=system_prompt,
+            ):
+                yield chunk
+        else:
+            # Fallback: non-streaming NVIDIA, then fake-stream tokens
+            result = await self.complete(prompt, temperature=temperature,
+                                         max_tokens=max_tokens, system_prompt=system_prompt)
+            for word in result.text.split(" "):
+                yield word + " "
+                await asyncio.sleep(0)
+
+    async def _stream_groq_sse(
+        self,
+        prompt: str,
+        api_key: str,
+        *,
+        model: str,
+        temperature: float,
+        max_tokens: int,
+        system_prompt: str | None,
+    ) -> AsyncIterator[str]:
+        """Internal Groq SSE streaming generator."""
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
+        payload = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": True,
+        }
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            async with client.stream(
+                "POST",
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers=headers,
+                json=payload,
+            ) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    data_str = line[6:].strip()
+                    if data_str == "[DONE]":
+                        break
+                    try:
+                        data = json.loads(data_str)
+                        delta = data["choices"][0]["delta"]
+                        content = delta.get("content", "")
+                        if content:
+                            yield content
+                    except (json.JSONDecodeError, KeyError, IndexError):
+                        continue
+
+    # ------------------------------------------------------------------
+    # Groq Whisper STT
+    # ------------------------------------------------------------------
+
+    async def transcribe_audio(
+        self,
+        audio_bytes: bytes,
+        *,
+        filename: str = "audio.webm",
+        content_type: str = "audio/webm",
+        language: str | None = None,
+    ) -> str:
+        """Transcribe audio using Groq Whisper. Returns transcript text."""
+        groq_key = await self._get_key("groq")
+        if not groq_key:
+            raise ValueError(
+                "Groq API key not configured. Add it in Profile > AI Provider Keys."
+            )
+
+        # Use official groq Python SDK if available, otherwise raw httpx
+        try:
+            from groq import AsyncGroq
+            client = AsyncGroq(api_key=groq_key)
+            transcription = await client.audio.transcriptions.create(
+                file=(filename, audio_bytes, content_type),
+                model=GROQ_STT_MODEL,
+                language=language,
+                response_format="json",
+            )
+            return transcription.text
+        except ImportError:
+            # Fallback: raw httpx
+            return await self._transcribe_httpx(
+                audio_bytes, groq_key, filename=filename,
+                content_type=content_type, language=language
+            )
+
+    async def _transcribe_httpx(
+        self,
+        audio_bytes: bytes,
+        api_key: str,
+        *,
+        filename: str,
+        content_type: str,
+        language: str | None,
+    ) -> str:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            files = {"file": (filename, audio_bytes, content_type)}
+            data: dict[str, Any] = {
+                "model": GROQ_STT_MODEL,
+                "response_format": "json",
+            }
+            if language:
+                data["language"] = language
+            headers = {"Authorization": f"Bearer {api_key}"}
+            r = await client.post(
+                "https://api.groq.com/openai/v1/audio/transcriptions",
+                headers=headers,
+                files=files,
+                data=data,
+            )
+            r.raise_for_status()
+            return r.json().get("text", "")
+
+    # ------------------------------------------------------------------
+    # LiveKit token generation
+    # ------------------------------------------------------------------
+
+    async def create_livekit_token(
+        self,
+        *,
+        room_name: str,
+        participant_identity: str,
+        participant_name: str,
+    ) -> str:
+        """Generate a LiveKit access token for a voice room."""
+        lk_api_key = os.environ.get("LIVEKIT_API_KEY", "")
+        lk_api_secret = os.environ.get("LIVEKIT_API_SECRET", "")
+        if not lk_api_key or not lk_api_secret:
+            raise ValueError(
+                "LiveKit credentials not configured. "
+                "Add LIVEKIT_API_KEY and LIVEKIT_API_SECRET to your environment."
+            )
+        try:
+            from livekit.api import AccessToken, VideoGrants
+            token = (
+                AccessToken(lk_api_key, lk_api_secret)
+                .with_identity(participant_identity)
+                .with_name(participant_name)
+                .with_grants(VideoGrants(
+                    room_join=True,
+                    room=room_name,
+                    can_publish=True,
+                    can_subscribe=True,
+                ))
+            )
+            return token.to_jwt()
+        except ImportError:
+            # livekit-api not installed, return placeholder
+            raise ValueError("livekit-api package required. Run: pip install livekit-api")
+
+    # ------------------------------------------------------------------
+    # Individual provider callers
+    # ------------------------------------------------------------------
+
+    async def _call(
         self,
         provider: Provider,
         prompt: str,
         *,
+        model: str | None,
         temperature: float,
         max_tokens: int | None,
+        system_prompt: str | None = None,
     ) -> LLMResponse:
-        """Make a single provider call."""
-
+        m = model or DEFAULT_MODELS.get(provider, "")
         if provider == Provider.NVIDIA:
-            return await self._call_nvidia(prompt, temperature=temperature, max_tokens=max_tokens)
-        elif provider == Provider.OPENAI:
-            return await self._call_openai(prompt, temperature=temperature, max_tokens=max_tokens)
-        elif provider == Provider.GEMINI:
-            return await self._call_gemini(prompt, temperature=temperature, max_tokens=max_tokens)
+            return await self._call_nvidia(prompt, model=m, temperature=temperature,
+                                            max_tokens=max_tokens, system_prompt=system_prompt)
         elif provider == Provider.GROQ:
-            return await self._call_groq(prompt, temperature=temperature, max_tokens=max_tokens)
+            return await self._call_groq(prompt, model=m, temperature=temperature,
+                                          max_tokens=max_tokens, system_prompt=system_prompt)
+        elif provider == Provider.OPENAI:
+            return await self._call_openai(prompt, model=m, temperature=temperature,
+                                            max_tokens=max_tokens, system_prompt=system_prompt)
+        elif provider == Provider.GEMINI:
+            return await self._call_gemini(prompt, model=m, temperature=temperature,
+                                            max_tokens=max_tokens)
         elif provider == Provider.OLLAMA:
-            return await self._call_ollama(prompt, temperature=temperature, max_tokens=max_tokens)
-        elif provider == Provider.MOCK:
-            return await self._call_mock(prompt, temperature=temperature, max_tokens=max_tokens)
+            return await self._call_ollama(prompt, model=m, temperature=temperature,
+                                            max_tokens=max_tokens)
         else:
-            raise ValueError(f"Unsupported provider: {provider}")
+            return await self._call_mock(prompt)
 
-    async def _call_nvidia(self, prompt: str, *, temperature: float, max_tokens: int | None) -> LLMResponse:
-        """Call NVIDIA NIM API with Nemotron 3.5 model.
+    async def _call_nvidia(
+        self, prompt: str, *, model: str, temperature: float,
+        max_tokens: int | None, system_prompt: str | None = None
+    ) -> LLMResponse:
+        api_key = await self._get_key("nvidia")
+        if not api_key:
+            raise ValueError("NVIDIA API key not configured.")
 
-        NVIDIA NIM endpoint: POST https://ai.nvidia.com/v1/chat/completions
-        Model: nvidia/nemotron-3.5-lightning-30b-a3b
-        """
-        api_key = self._get_nvidia_key()
-        headers = {"Authorization": f"Bearer {api_key}"}
-        payload = {
-            "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
-            "messages": [{"role": "user", "content": prompt}],
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
+        payload: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
             "temperature": temperature,
-            "max_tokens": max_tokens,
         }
+        if max_tokens:
+            payload["max_tokens"] = max_tokens
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as client:
             resp = await client.post(
-                "https://ai.nvidia.com/v1/chat/completions",
-                headers=headers,
-                json=payload,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-
-        # Extract the response text
-        choices = data.get("choices", [])
-        if choices and len(choices) > 0:
-            text = choices[0].get("message", {}).get("content", "")
-        else:
-            text = ""
-
-        # Extract usage info if available
-        usage = data.get("usage", {})
-        model = data.get("model", "nvidia/nemotron-3.5-lightning-30b-a3b")
-
-        return LLMResponse(
-            text=text or "",
-            model=model,
-            provider=Provider.NVIDIA,
-            usage=usage or {},
-        )
-
-    async def _call_openai(self, prompt: str, *, temperature: float, max_tokens: int | None) -> LLMResponse:
-        """Call OpenAI API."""
-        api_key = self._get_openai_key()
-        headers = {"Authorization": f"Bearer {api_key}"}
-        payload = {
-            "model": model or "gpt-4o-mini",
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-        }
-
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers=headers,
+                "https://integrate.api.nvidia.com/v1/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}"},
                 json=payload,
             )
             resp.raise_for_status()
@@ -212,61 +407,39 @@ class LLMGateway:
 
         choices = data.get("choices", [])
         text = choices[0].get("message", {}).get("content", "") if choices else ""
-        usage = data.get("usage", {})
-        model = data.get("model", "gpt-4o-mini")
-
         return LLMResponse(
             text=text or "",
-            model=model,
-            provider=Provider.OPENAI,
-            usage=usage or {},
+            model=data.get("model", model),
+            provider=Provider.NVIDIA,
+            usage=data.get("usage", {}),
         )
 
-    async def _call_gemini(self, prompt: str, *, temperature: float, max_tokens: int | None) -> LLMResponse:
-        """Call Google Gemini API."""
-        api_key = self._get_gemini_key()
-        payload = {
-            "model": model or "gemini-1.5-flash",
-            "contents": [prompt],
+    async def _call_groq(
+        self, prompt: str, *, model: str, temperature: float,
+        max_tokens: int | None, system_prompt: str | None = None
+    ) -> LLMResponse:
+        api_key = await self._get_key("groq")
+        if not api_key:
+            raise ValueError("Groq API key not configured.")
+
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
+        payload: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
             "temperature": temperature,
-            "max_output_tokens": max_tokens,
+            "stream": False,
         }
-
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(
-                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}",
-                json=payload,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-
-        # Gemini response format
-        text = data.get("text", "") or ""
-        usage = data.get("usageMetadata", {})
-        model = data.get("model", "gemini-1.5-flash")
-
-        return LLMResponse(
-            text=str(text) or "",
-            model=model,
-            provider=Provider.GEMINI,
-            usage=usage or {},
-        )
-
-    async def _call_groq(self, prompt: str, *, temperature: float, max_tokens: int | None) -> LLMResponse:
-        """Call Groq API."""
-        api_key = self._get_groq_key()
-        headers = {"Authorization": f"Bearer {api_key}"}
-        payload = {
-            "model": model or "llama-3.1-8b-instant",
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-        }
+        if max_tokens:
+            payload["max_tokens"] = max_tokens
 
         async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.post(
                 "https://api.groq.com/openai/v1/chat/completions",
-                headers=headers,
+                headers={"Authorization": f"Bearer {api_key}"},
                 json=payload,
             )
             resp.raise_for_status()
@@ -274,99 +447,124 @@ class LLMGateway:
 
         choices = data.get("choices", [])
         text = choices[0].get("message", {}).get("content", "") if choices else ""
-        usage = data.get("usage", {})
-        model = data.get("model", "llama-3.1-8b-instant")
-
         return LLMResponse(
             text=text or "",
-            model=model,
+            model=data.get("model", model),
             provider=Provider.GROQ,
-            usage=usage or {},
+            usage=data.get("usage", {}),
         )
 
-    async def _call_ollama(self, prompt: str, *, temperature: float, max_tokens: int | None) -> LLMResponse:
-        """Call local Ollama API."""
-        payload = {
-            "model": model or "llama3",
-            "prompt": prompt,
-            "stream": False,
-            "options": {
-                "temperature": temperature,
-                "num_predict": max_tokens,
-            },
-        }
+    async def _call_openai(
+        self, prompt: str, *, model: str, temperature: float,
+        max_tokens: int | None, system_prompt: str | None = None
+    ) -> LLMResponse:
+        api_key = await self._get_key("openai")
+        if not api_key:
+            raise ValueError("OpenAI API key not configured.")
 
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
+        payload: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+        }
+        if max_tokens:
+            payload["max_tokens"] = max_tokens
+
+        async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.post(
-                "http://localhost:11434/api/generate",
+                "https://api.openai.com/v1/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}"},
                 json=payload,
             )
             resp.raise_for_status()
             data = resp.json()
 
-        text = data.get("response", "")
-        model = data.get("model", "llama3")
+        choices = data.get("choices", [])
+        text = choices[0].get("message", {}).get("content", "") if choices else ""
+        return LLMResponse(
+            text=text or "",
+            model=data.get("model", model),
+            provider=Provider.OPENAI,
+            usage=data.get("usage", {}),
+        )
+
+    async def _call_gemini(
+        self, prompt: str, *, model: str, temperature: float,
+        max_tokens: int | None
+    ) -> LLMResponse:
+        api_key = await self._get_key("gemini")
+        if not api_key:
+            raise ValueError("Gemini API key not configured.")
+
+        payload: dict[str, Any] = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"temperature": temperature},
+        }
+        if max_tokens:
+            payload["generationConfig"]["maxOutputTokens"] = max_tokens
+
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}",
+                json=payload,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+        try:
+            text = data["candidates"][0]["content"]["parts"][0]["text"]
+        except (KeyError, IndexError):
+            text = ""
 
         return LLMResponse(
             text=text or "",
             model=model,
+            provider=Provider.GEMINI,
+            usage=data.get("usageMetadata", {}),
+        )
+
+    async def _call_ollama(
+        self, prompt: str, *, model: str, temperature: float,
+        max_tokens: int | None
+    ) -> LLMResponse:
+        ollama_url = os.environ.get("OLLAMA_URL", "http://localhost:11434")
+        payload: dict[str, Any] = {
+            "model": model,
+            "prompt": prompt,
+            "stream": False,
+            "options": {"temperature": temperature},
+        }
+        if max_tokens:
+            payload["options"]["num_predict"] = max_tokens
+
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(f"{ollama_url}/api/generate", json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+
+        return LLMResponse(
+            text=data.get("response", "") or "",
+            model=data.get("model", model),
             provider=Provider.OLLAMA,
         )
 
-    async def _call_mock(self, prompt: str, *, temperature: float, max_tokens: int | None) -> LLMResponse:
-        """Mock response for demo/CI when no API key is configured."""
-        text = f"[MOCK] This is a simulated response to: '{prompt[:80]}...'\n\n"
-        text += "This would be a real LLM response if an API key were configured.\n"
-        text += "Please add an NVIDIA NIM API key or other provider key in your profile to enable AI features."
-        text += "\n\n---\n"
-        text += "Medical disclaimer: These figures are explanations of what appears on the report, not a clinical interpretation. Discuss them with a qualified doctor."
-
-        return LLMResponse(
-            text=text,
-            model="mock-model",
-            provider=Provider.MOCK,
+    async def _call_mock(self, prompt: str) -> LLMResponse:
+        text = (
+            f"[MOCK] Simulated response to: '{prompt[:80]}...'\n\n"
+            "This is a demo response. Add an NVIDIA or Groq API key in Profile > "
+            "AI Provider Keys to enable real AI responses.\n\n"
+            "---\nMedical disclaimer: These figures are explanations of what appears "
+            "on the report, not a clinical interpretation. Discuss with a qualified doctor."
         )
-
-    # Key getters - will be integrated with DB api_keys table
-    def _get_nvidia_key(self) -> str:
-        """Get NVIDIA API key from environment or DB."""
-        import os
-        key = os.environ.get("NVIDIA_API_KEY", "")
-        if key:
-            return key
-        # TODO: Fetch from api_keys table
-        raise ValueError("NVIDIA API key not configured")
-
-    def _get_openai_key(self) -> str:
-        """Get OpenAI API key."""
-        import os
-        key = os.environ.get("OPENAI_API_KEY", "")
-        if key:
-            return key
-        raise ValueError("OpenAI API key not configured")
-
-    def _get_gemini_key(self) -> str:
-        """Get Google Gemini API key."""
-        import os
-        key = os.environ.get("GEMINI_API_KEY", "")
-        if key:
-            return key
-        raise ValueError("Gemini API key not configured")
-
-    def _get_groq_key(self) -> str:
-        """Get Groq API key."""
-        import os
-        key = os.environ.get("GROQ_API_KEY", "")
-        if key:
-            return key
-        raise ValueError("Groq API key not configured")
+        return LLMResponse(text=text, model="mock-model", provider=Provider.MOCK)
 
     def _log_success(self, provider: Provider, result: LLMResponse) -> None:
-        """Log successful provider call for analytics."""
-        # TODO: Integrate with cost tracking and analytics
-        pass
+        pass  # TODO: cost tracking
 
     def _log_failure(self, provider: Provider, error: Exception) -> None:
-        """Log failed provider call for analytics."""
-        # TODO: Integrate with cost tracking and analytics
-        pass
+        pass  # TODO: alerting

@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Cookie, Depends, Response
+from fastapi import APIRouter, Body, Cookie, Depends, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.cookies import REFRESH_COOKIE, clear_refresh_cookie, set_refresh_cookie
@@ -36,9 +36,12 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 async def register(
     payload: RegisterRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
+    request: Request,
 ) -> MessageResponse:
     """Stage 1: validate + stash pending registration + send OTP. Creates no account rows."""
-    await check_rate_limit("auth:register:ip", limit=20, window_seconds=3600)
+    client_ip = request.client.host if request.client else "unknown"
+    # Per-IP bucket (prevents global 20/hour DoS) + per-email bucket is inside auth_service.register
+    await check_rate_limit(f"auth:register:ip:{client_ip}", limit=20, window_seconds=3600)
     return await auth_service.register(db, payload)
 
 
@@ -47,8 +50,12 @@ async def verify_registration(
     payload: VerifyRegistrationRequest,
     response: Response,
     db: Annotated[AsyncSession, Depends(get_db)],
+    request: Request,
 ) -> AuthResponse:
     """Stage 2: prove the OTP → create the account, verified, and sign the user in."""
+    client_ip = request.client.host if request.client else "unknown"
+    await check_rate_limit(f"auth:verify:ip:{client_ip}", limit=20, window_seconds=3600)
+    await check_rate_limit(f"auth:verify:email:{payload.email.lower()}", limit=10, window_seconds=3600)
     result, refresh = await auth_service.verify_registration(db, payload.email, payload.code)
     set_refresh_cookie(response, refresh)
     return result
@@ -124,7 +131,10 @@ async def sessions(
 async def forgot_password(
     payload: ForgotPasswordRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
+    request: Request,
 ) -> MessageResponse:
+    client_ip = request.client.host if request.client else "unknown"
+    await check_rate_limit(f"auth:forgot:ip:{client_ip}", limit=20, window_seconds=3600)
     message = await auth_service.forgot_password(db, payload.email)
     return MessageResponse(message=message)
 
@@ -133,7 +143,10 @@ async def forgot_password(
 async def reset_password(
     payload: ResetPasswordRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
+    request: Request,
 ) -> MessageResponse:
+    client_ip = request.client.host if request.client else "unknown"
+    await check_rate_limit(f"auth:reset:ip:{client_ip}", limit=20, window_seconds=3600)
     await auth_service.reset_password(db, payload.email, payload.otp, payload.new_password)
     return MessageResponse(message="Password updated. Sign in with your new password.")
 

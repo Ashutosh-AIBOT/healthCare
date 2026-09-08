@@ -25,6 +25,7 @@ from app.core.security import hash_password
 from app.db.session import UserRole, set_rls_bypass
 from app.models.family import Family
 from app.models.family_member import FamilyMember
+from app.models.learn import BodyTest, LearnCategory, LearnItem, TestBodyPart
 from app.models.provider import DoctorDetail, LabDetail, ProviderProfile
 from app.models.user import Consent, ConsentDocument, SystemSetting, User
 
@@ -96,6 +97,76 @@ async def ensure_consent_docs(db: AsyncSession) -> None:
                     body_url=f"/legal/{ctype.replace('_', '-')}",
                 )
             )
+
+
+async def ensure_learn_catalog(db: AsyncSession) -> None:
+    if await db.scalar(select(LearnCategory).limit(1)) is not None:
+        return
+    cats = [
+        ("vegetables-fruits", "Vegetables & Fruits", "food", "Fresh produce for micronutrients and fiber.", "apple", 1),
+        ("grains-millets", "Grains & Millets", "food", "Complex carbs and fiber for sustained energy.", "wheat", 2),
+        ("nonveg-protein", "Non-Veg & Protein", "food", "Animal protein, iron and B12.", "fish", 3),
+        ("dairy", "Dairy", "food", "Calcium and protein.", "milk", 4),
+        ("nuts-seeds", "Nuts & Seeds", "food", "Healthy fats and minerals.", "nut", 5),
+        ("food-info", "Food & Health Guide", "test_info", "Why these foods matter for a healthy life.", "book-open", 10),
+        ("test-info", "Full Body Test Guide", "test_info", "What each test checks and how to prepare.", "flask", 11),
+    ]
+    cat_rows: dict[str, LearnCategory] = {}
+    for slug, title, kind, desc, icon, order in cats:
+        row = LearnCategory(slug=slug, title=title, kind=kind, description=desc, icon=icon, sort_order=order)
+        db.add(row)
+        cat_rows[slug] = row
+    await db.flush()
+    items = [
+        (cat_rows["vegetables-fruits"], "spinach", "Spinach", "Iron and folate rich leafy green.", {"calories": 23, "protein": 2.9, "carbs": 3.6, "fats": 0.4, "fiber": 2.2}, ["Supports hemoglobin", "Eye health"], "Daily greens for iron and vitamins."),
+        (cat_rows["vegetables-fruits"], "apple", "Apple", "Fiber and vitamin C.", {"calories": 52, "protein": 0.3, "carbs": 14, "fats": 0.2, "fiber": 2.4}, ["Digestive health", "Satiety"], "A fruit a day for fiber."),
+        (cat_rows["grains-millets"], "ragi", "Ragi (Finger Millet)", "Calcium rich millet.", {"calories": 336, "protein": 7.3, "carbs": 72, "fats": 1.3, "fiber": 3.5}, ["Bone health", "Slow energy"], "Millets over refined grains."),
+        (cat_rows["nonveg-protein"], "egg", "Egg", "Complete protein.", {"calories": 143, "protein": 12.6, "carbs": 0.7, "fats": 9.5, "fiber": 0}, ["Muscle repair", "B12"], "Protein for recovery."),
+        (cat_rows["dairy"], "curd", "Curd / Yogurt", "Probiotics and calcium.", {"calories": 59, "protein": 3.1, "carbs": 4.6, "fats": 3.3, "fiber": 0}, ["Gut health", "Calcium"], "Fermented dairy for gut."),
+        (cat_rows["nuts-seeds"], "almonds", "Almonds", "Healthy fats and vitamin E.", {"calories": 579, "protein": 21, "carbs": 22, "fats": 50, "fiber": 12.5}, ["Heart health", "Brain"], "Handful of nuts daily."),
+    ]
+    for cat, slug, title, summary, nutri, benefits, role in items:
+        db.add(LearnItem(category_id=cat.id, slug=slug, title=title, summary=summary, nutrition=nutri, benefits=benefits, healthy_role=role, sort_order=1))
+    parts = [
+        ("head-brain", "Head & Brain", 1, "Neurological and cognitive health."),
+        ("eyes", "Eyes", 2, "Vision and eye health."),
+        ("thyroid", "Thyroid", 3, "Metabolism regulation."),
+        ("heart-chest", "Heart & Chest", 4, "Cardiovascular and chest."),
+        ("lungs", "Lungs", 5, "Respiratory system."),
+        ("liver", "Liver", 6, "Liver function."),
+        ("kidney", "Kidney", 7, "Kidney and urinary."),
+        ("abdomen-gut", "Abdomen & Gut", 8, "Digestive and abdominal."),
+        ("bones-joints", "Bones & Joints", 9, "Musculoskeletal."),
+        ("blood-diabetes", "Blood & Diabetes", 10, "Blood and sugar."),
+        ("legs-feet", "Legs & Feet", 11, "Lower limbs."),
+    ]
+    part_rows: dict[str, TestBodyPart] = {}
+    for slug, name, order, desc in parts:
+        row = TestBodyPart(slug=slug, name=name, order_index=order, description=desc)
+        db.add(row)
+        part_rows[slug] = row
+    await db.flush()
+    tests = [
+        (part_rows["head-brain"], "MRI Brain", "Brain structure", "No metal, fasting 4h", False),
+        (part_rows["eyes"], "Vision Test", "Visual acuity", "No prep", False),
+        (part_rows["thyroid"], "TSH", "Thyroid function", "Morning sample", False),
+        (part_rows["heart-chest"], "Lipid Profile", "Cholesterol", "Fasting 9-12h", True),
+        (part_rows["heart-chest"], "ECG", "Heart rhythm", "Rest 5 min", False),
+        (part_rows["heart-chest"], "Echo", "Heart structure", "No prep", False),
+        (part_rows["lungs"], "Chest X-Ray", "Lung fields", "No prep", False),
+        (part_rows["liver"], "LFT", "Liver enzymes", "Fasting preferred", True),
+        (part_rows["kidney"], "KFT", "Kidney function", "Hydrated, fasting preferred", True),
+        (part_rows["kidney"], "Urine R/E", "Urine analysis", "Midstream sample", False),
+        (part_rows["abdomen-gut"], "USG Abdomen", "Abdominal organs", "Fasting 6h", True),
+        (part_rows["bones-joints"], "Vitamin D", "Bone health", "No prep", False),
+        (part_rows["blood-diabetes"], "CBC", "Blood counts", "No prep", False),
+        (part_rows["blood-diabetes"], "HbA1c", "3-month sugar", "No fasting", False),
+        (part_rows["blood-diabetes"], "Fasting Blood Sugar", "Glucose", "Fasting 8h", True),
+        (part_rows["legs-feet"], "Doppler Legs", "Leg circulation", "No prep", False),
+    ]
+    for part, name, check, prep, fasting in tests:
+        slug = name.lower().replace(" ", "-").replace("/", "-")
+        db.add(BodyTest(body_part_id=part.id, name=name, what_it_checks=check, prep_note=prep, fasting_required=fasting, sort_order=1))
 
 
 async def ensure_user(db: AsyncSession, spec: dict) -> User:
@@ -217,6 +288,7 @@ async def main() -> None:
         await set_rls_bypass(db, True)
         await ensure_settings(db)
         await ensure_consent_docs(db)
+        await ensure_learn_catalog(db)
         for spec in USERS:
             user = await ensure_user(db, spec)
             print(f"seeded {user.email} ({user.role})")

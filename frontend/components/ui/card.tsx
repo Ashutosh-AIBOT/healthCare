@@ -11,6 +11,22 @@ export function Card({ className, children, ...props }: HTMLAttributes<HTMLDivEl
   );
 }
 
+export function CardHeader({ className, children, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div className={cn("mb-4", className)} {...props}>
+      {children}
+    </div>
+  );
+}
+
+export function CardContent({ className, children, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div className={cn("", className)} {...props}>
+      {children}
+    </div>
+  );
+}
+
 export function EmptyState({
   title,
   description,

@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
-from app.core.ratelimit import close_redis
+from app.core.ratelimit import clear_rate_limit_state, close_redis
 from app.db.session import get_db
 from app.main import app
 
@@ -50,7 +50,8 @@ async def clean_db(engine):
         await conn.execute(text("GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO app_user"))
         await conn.execute(
             text(
-                "TRUNCATE TABLE backup_codes, totp_secrets, consents, consent_documents, "
+                "TRUNCATE TABLE day_block_status, holiday_rules, todos, time_blocks, time_timetables, "
+                "backup_codes, totp_secrets, consents, consent_documents, "
                 "sessions, otp_codes, pending_registrations, consent_access_logs, member_claims, member_visibility_grants, "
                 "document_chunks, lab_report_values, documents, jobs, "
                 "member_transfers, member_medical_profiles, invites, "
@@ -99,6 +100,15 @@ async def db_app_user(app_user_engine):
             yield session
             await transaction.rollback()
             await session.close()
+
+
+@pytest.fixture(autouse=True)
+async def _clear_rate_limits():
+    # Isolate rate-limit buckets (Redis + in-memory) between tests
+    # so AUTH_RATE_LIMITED does not leak across the suite.
+    await clear_rate_limit_state()
+    yield
+    await clear_rate_limit_state()
 
 
 @pytest.fixture

@@ -27,7 +27,7 @@ export function ResetPasswordForm() {
 
   const onSubmit = handleSubmit(async (values) => {
     setServerError(null);
-    const { error } = await apiClient("/api/auth/reset-password", {
+    const { error } = await apiClient("/api/v1/auth/reset-password", {
       method: "POST",
       body: JSON.stringify({
         email: values.email,
@@ -36,10 +36,18 @@ export function ResetPasswordForm() {
       }),
     });
     if (error) {
+      if (error.code === "AUTH_RATE_LIMITED" || error.status === 429) {
+        setServerError("Too many attempts. Please wait and try again.");
+        return;
+      }
+      if (error.code === "OTP_ATTEMPTS_EXCEEDED" || error.status === 429) {
+        setServerError("Too many incorrect codes. Request a new code.");
+        return;
+      }
       setServerError(error.detail || "Could not reset password.");
       return;
     }
-    router.push("/login?reset=1");
+    router.replace("/login?reset=1");
   });
 
   return (

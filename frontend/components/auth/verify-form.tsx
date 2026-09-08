@@ -31,7 +31,7 @@ export function VerifyForm() {
   const onSubmit = handleSubmit(async (values) => {
     setServerError(null);
     const { data, error } = await apiClient<{ tokens?: { access_token: string } }>(
-      "/api/auth/verify-otp",
+      "/api/v1/auth/verify-registration",
       {
         method: "POST",
         body: JSON.stringify({
@@ -42,27 +42,48 @@ export function VerifyForm() {
       },
     );
     if (error) {
+      if (error.code === "AUTH_RATE_LIMITED" || error.status === 429) {
+        setServerError("Too many attempts. Please wait and try again.");
+        return;
+      }
+      if (error.code === "REGISTRATION_EXPIRED" || error.status === 410) {
+        setServerError("Registration expired. Please register again.");
+        return;
+      }
+      if (error.code === "OTP_ATTEMPTS_EXCEEDED" || error.status === 429) {
+        setServerError("Too many incorrect codes. Request a new code.");
+        return;
+      }
       setServerError(error.detail || "Verification failed.");
       return;
     }
     // verify_email completes registration and signs the user in.
     if (data?.tokens?.access_token) {
       setAccessToken(data.tokens.access_token);
-      router.push("/app");
+      router.replace("/app");
+      router.refresh();
       return;
     }
-    router.push(`/login?verified=1&email=${encodeURIComponent(values.email)}`);
+    router.replace(`/login?verified=1&email=${encodeURIComponent(values.email)}`);
   });
 
   const resend = async () => {
     setServerError(null);
     setInfo(null);
     const email = getValues("email");
-    const { data, error } = await apiClient<{ message?: string }>("/api/auth/send-otp", {
+    if (!email) {
+      setServerError("Enter your email first.");
+      return;
+    }
+    const { data, error } = await apiClient<{ message?: string }>("/api/v1/otp/send", {
       method: "POST",
       body: JSON.stringify({ email, purpose: "verify_email" }),
     });
     if (error) {
+      if (error.code === "AUTH_RATE_LIMITED" || error.status === 429) {
+        setServerError("Too many resends. Please wait before requesting again.");
+        return;
+      }
       setServerError(error.detail || "Could not resend code.");
       return;
     }

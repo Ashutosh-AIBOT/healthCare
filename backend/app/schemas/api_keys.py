@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Literal, Optional
 
 from pydantic import BaseModel, Field, validator
@@ -37,7 +38,7 @@ class ApiKeyRead(BaseModel):
     id: uuid.UUID
     provider: ProviderName
     is_active: bool
-    created_at: str
-    updated_at: str
+    created_at: datetime
+    updated_at: datetime
 
     model_config = {"from_attributes": True}

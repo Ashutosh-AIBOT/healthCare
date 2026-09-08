@@ -62,6 +62,7 @@ class JobOut(BaseModel):
 
 
 class AiAskRequest(BaseModel):
-    member_id: uuid.UUID
+    member_id: uuid.UUID | None = None
     question: str = Field(min_length=1, max_length=4000)
     document_id: uuid.UUID | None = None
+    stream: bool = True

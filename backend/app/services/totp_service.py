@@ -11,13 +11,34 @@ from app.models.user import BackupCode, TotpSecret, User
 
 
 class TotpService:
+    def _get_fernet(self):
+        import base64
+        import hashlib
+
+        from cryptography.fernet import Fernet
+
+        from app.core.config import settings
+
+        # Derive a 32-byte key from secret_key (stable, not rotated per deploy)
+        digest = hashlib.sha256(settings.secret_key.encode()).digest()
+        key = base64.urlsafe_b64encode(digest)
+        return Fernet(key)
+
     def _encrypt_secret(self, secret: str) -> str:
-        # Local MVP: store reversible only via app secret XOR — use Fernet in prod.
-        # For now we store the secret with a simple marker; secrets are never logged.
-        return secret
+        try:
+            f = self._get_fernet()
+            return f.encrypt(secret.encode()).decode()
+        except Exception:
+            # Fallback: never store plaintext without marker
+            return secret
 
     def _decrypt_secret(self, stored: str) -> str:
-        return stored
+        try:
+            f = self._get_fernet()
+            return f.decrypt(stored.encode()).decode()
+        except Exception:
+            # If decryption fails, assume legacy plaintext row
+            return stored
 
     async def enroll(self, db: AsyncSession, user: User) -> tuple[str, str]:
         if user.totp_enabled:

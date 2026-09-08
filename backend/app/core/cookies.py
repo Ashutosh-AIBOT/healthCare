@@ -18,4 +18,19 @@ def set_refresh_cookie(response: Response, token: str) -> None:
 
 
 def clear_refresh_cookie(response: Response) -> None:
-    response.delete_cookie(key=REFRESH_COOKIE, path="/api/v1/auth")
+    # Must mirror set_refresh_cookie attributes so browsers correctly delete the cookie
+    response.delete_cookie(
+        key=REFRESH_COOKIE,
+        path="/api/v1/auth",
+        httponly=True,
+        secure=settings.app_env == "production",
+        samesite="lax",
+    )
+    # Also clear the rewritten Path=/ variant set by Next.js BFF proxy
+    response.delete_cookie(
+        key=REFRESH_COOKIE,
+        path="/",
+        httponly=True,
+        secure=settings.app_env == "production",
+        samesite="lax",
+    )

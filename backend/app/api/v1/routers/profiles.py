@@ -7,85 +7,91 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user, get_db
 from app.core.errors import AppError
-from app.models.family_member import FamilyMember
-from app.models.member_medical_profile import MemberMedicalProfile
 from app.models.user import User
-from app.schemas.member_medical_profile import (
-    MemberMedicalProfileCreate,
-    MemberMedicalProfileOut,
-    MemberMedicalProfileUpdate,
-)
-
-router = APIRouter(prefix="/families", tags=["medical-profiles"])
+from app.models.api_keys import ApiKey
+from app.schemas.api_keys import ApiKeyCreate, ApiKeyRead, ApiKeyUpdate
 
 
-async def _assert_member_in_family(db: AsyncSession, member_id: uuid.UUID, family_id: uuid.UUID) -> FamilyMember:
-    member = await db.get(FamilyMember, member_id)
-    if member is None or member.deleted_at is not None or member.family_id != family_id:
-        raise AppError(code="NOT_FOUND", status=404, detail="Member not found.")
-    return member
+router = APIRouter(prefix="/profile", tags=["profile"])
 
 
-@router.put("/members/{member_id}/medical-profile", response_model=MemberMedicalProfileOut)
-async def upsert_medical_profile(
-    member_id: uuid.UUID,
-    payload: MemberMedicalProfileCreate,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
-) -> MemberMedicalProfileOut:
+async def _get_user_family_id(db: AsyncSession, current_user: User) -> uuid.UUID:
+    """Get the family ID for the current user."""
     if current_user.family_id is None:
         raise AppError(code="NO_FAMILY", status=400, detail="User does not belong to a family.")
-    await _assert_member_in_family(db, member_id, current_user.family_id)
-
-    result = await db.execute(
-        select(MemberMedicalProfile).where(MemberMedicalProfile.member_id == member_id)
-    )
-    profile = result.scalar_one_or_none()
-    if profile is None:
-        profile = MemberMedicalProfile(member_id=member_id, **payload.model_dump())
-        db.add(profile)
-    else:
-        for k, v in payload.model_dump().items():
-            setattr(profile, k, v)
-    await db.flush()
-    return MemberMedicalProfileOut.model_validate(profile)
+    return current_user.family_id
 
 
-@router.get("/members/{member_id}/medical-profile", response_model=MemberMedicalProfileOut)
-async def get_medical_profile(
-    member_id: uuid.UUID,
+@router.post("/api-keys", response_model=ApiKeyRead)
+async def create_api_key(
+    payload: ApiKeyCreate,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-) -> MemberMedicalProfileOut:
-    if current_user.family_id is None:
-        raise AppError(code="NO_FAMILY", status=400, detail="User does not belong to a family.")
-    await _assert_member_in_family(db, member_id, current_user.family_id)
-    result = await db.execute(
-        select(MemberMedicalProfile).where(MemberMedicalProfile.member_id == member_id)
+) -> ApiKeyRead:
+    """Create a new LLM provider API key."""
+    from app.services.api_key_service import create_api_key as _create
+
+    key = await _create(
+        db,
+        user_id=str(current_user.id),
+        provider=payload.provider,
+        api_key=payload.api_key,
     )
-    profile = result.scalar_one_or_none()
-    if profile is None:
-        raise AppError(code="NOT_FOUND", status=404, detail="Medical profile not found.")
-    return MemberMedicalProfileOut.model_validate(profile)
+    return key
 
 
-@router.patch("/members/{member_id}/medical-profile", response_model=MemberMedicalProfileOut)
-async def patch_medical_profile(
-    member_id: uuid.UUID,
-    payload: MemberMedicalProfileUpdate,
+@router.post("/api-keys/upsert", response_model=ApiKeyRead)
+async def upsert_api_key(
+    payload: ApiKeyCreate,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
-) -> MemberMedicalProfileOut:
-    if current_user.family_id is None:
-        raise AppError(code="NO_FAMILY", status=400, detail="User does not belong to a family.")
-    await _assert_member_in_family(db, member_id, current_user.family_id)
-    result = await db.execute(
-        select(MemberMedicalProfile).where(MemberMedicalProfile.member_id == member_id)
+) -> ApiKeyRead:
+    """Create or update an LLM provider API key."""
+    from app.services.api_key_service import upsert_api_key as _upsert
+
+    key = await _upsert(
+        db,
+        user_id=str(current_user.id),
+        provider=payload.provider,
+        api_key=payload.api_key,
     )
-    profile = result.scalar_one_or_none()
-    if profile is None:
-        raise AppError(code="NOT_FOUND", status=404, detail="Medical profile not found.")
-    for k, v in payload.model_dump(exclude_unset=True).items():
-        setattr(profile, k, v)
-    await db.flush()
-    return MemberMedicalProfileOut.model_validate(profile)
+    return key
+
+
+@router.get("/api-keys", response_model=list[ApiKeyRead])
+async def list_api_keys(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> list[ApiKeyRead]:
+    """List all API keys for the current user."""
+    from app.services.api_key_service import list_user_api_keys as _list
+
+    keys = await _list(db, user_id=str(current_user.id))
+    return keys
+
+
+@router.patch("/api-keys/{provider}", response_model=ApiKeyRead)
+async def update_api_key(
+    provider: str,
+    payload: ApiKeyUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> ApiKeyRead:
+    """Update an API key (e.g., deactivate)."""
+    from app.services.api_key_service import deactivate_api_key as _deactivate
+
+    success = await _deactivate(
+        db,
+        user_id=str(current_user.id),
+        provider=provider,
+    )
+    if not success:
+        raise AppError(code="KEY_NOT_FOUND", status=404, detail=f"API key for provider '{provider}' not found.")
+
+    # Return the updated key
+    from app.services.api_key_service import get_active_api_key as _get
+
+    key = await _get(db, user_id=str(current_user.id), provider=provider)
+    if key is None:
+        raise AppError(code="KEY_INACTIVE", status=404, detail=f"API key for provider '{provider}' is inactive.")
+    return key

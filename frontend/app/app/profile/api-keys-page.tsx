@@ -1,17 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
 import {
-  Button,
   Card,
   CardContent,
   CardHeader,
-  Input,
-  Label,
+  ErrorState,
 } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { apiClient } from "@/lib/auth-client";
 import { useSearchParams, useRouter } from "next/navigation";
-import { memoize } from "react";
 
 type ProviderModel = {
   provider: "nvidia" | "openai" | "gemini" | "groq" | "ollama" | "mock";
@@ -26,6 +25,7 @@ type ApiKeyFormState = {
 
 export default function ProfileApiKeysPage() {
   const [keys, setKeys] = useState<{
+    id: string;
     provider: string;
     is_active: boolean;
   }[] | null>(null);
@@ -70,8 +70,8 @@ export default function ProfileApiKeysPage() {
     setLoading(true);
     try {
       const [me, acc] = await Promise.all([
-        apiClient("/api/v1/auth/me"),
-        apiClient("/api/v1/profile/api-keys"),
+        apiClient<any>("/api/v1/auth/me"),
+        apiClient<{ id: string; provider: string; is_active: boolean }[]>("/api/v1/profile/api-keys"),
       ]);
 
       if (me.error) {
@@ -182,11 +182,11 @@ export default function ProfileApiKeysPage() {
       {/* Add New Provider Form */}
       <Card>
         <CardHeader>
-          <Label>Add LLM Provider API Key</Label>
+          <p className="text-sm font-semibold text-ink">Add LLM Provider API Key</p>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
           <div>
-            <Label>Provider</Label>
+            <p className="text-xs font-semibold text-muted">Provider</p>
             <Input
               type="hidden"
               value={provider}
@@ -230,7 +230,7 @@ export default function ProfileApiKeysPage() {
           </div>
 
           <div>
-            <Label>API Key</Label>
+            <p className="text-xs font-semibold text-muted">API Key</p>
             <Input
               type="password"
               placeholder="Enter your API key"
@@ -264,7 +264,7 @@ export default function ProfileApiKeysPage() {
       {keys && keys.length > 0 && (
         <Card>
           <CardHeader>
-            <Label>Your Active Provider Keys</Label>
+            <p className="text-sm font-semibold text-ink">Your Active Provider Keys</p>
           </CardHeader>
           <CardContent>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
@@ -320,7 +320,7 @@ export default function ProfileApiKeysPage() {
       {keys && keys.length > 0 && (
         <Card>
           <CardHeader>
-            <Label>Selected Model</Label>
+            <p className="text-sm font-semibold text-ink">Selected Model</p>
           </CardHeader>
           <CardContent>
             <p className="text-sm text-ink">

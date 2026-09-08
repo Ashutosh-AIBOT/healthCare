@@ -33,7 +33,7 @@ export function LoginForm() {
 
   const onSubmit = handleSubmit(async (values) => {
     setServerError(null);
-    const { data, error } = await apiClient<LoginResponse>("/api/auth/login", {
+    const { data, error } = await apiClient<LoginResponse>("/api/v1/auth/login", {
       method: "POST",
       body: JSON.stringify({
         email: values.email,
@@ -43,6 +43,24 @@ export function LoginForm() {
     });
 
     if (error) {
+      // Handle provider / voluntary TOTP required flow (backend returns 403 TFA_REQUIRED or 400 TFA_INVALID)
+      if (error.code === "TFA_REQUIRED" || error.code === "TFA_INVALID" || error.status === 403) {
+        setNeedsTotp(true);
+        setServerError(error.detail || "Enter your authenticator code to continue.");
+        return;
+      }
+      if (error.code === "AUTH_RATE_LIMITED" || error.status === 429) {
+        setServerError("Too many attempts. Please wait and try again.");
+        return;
+      }
+      if (error.code === "AUTH_ACCOUNT_LOCKED" || error.status === 423) {
+        setServerError(error.detail || "Account temporarily locked. Try again later.");
+        return;
+      }
+      if (error.code === "AUTH_EMAIL_UNVERIFIED" || error.status === 403) {
+        setServerError("Please verify your email. Check your inbox for the code.");
+        return;
+      }
       setServerError(error.detail || "Sign in failed.");
       return;
     }
@@ -53,7 +71,9 @@ export function LoginForm() {
     }
     if (data?.tokens?.access_token) {
       setAccessToken(data.tokens.access_token);
-      router.replace(next);
+      // Validate next is internal to avoid open-redirect
+      const safeNext = next.startsWith("/") && !next.startsWith("//") ? next : "/app";
+      router.replace(safeNext);
       router.refresh();
       return;
     }

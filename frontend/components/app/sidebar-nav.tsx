@@ -1,3 +1,4 @@
+import * as React from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
@@ -96,18 +97,23 @@ const icons = {
       <path d="M9 21h6" />
     </svg>
   ),
+  learn: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+      <path d="M6.5 2H20v15H6.5A2.5 2.5 0 0 1 4 19.5V4.5A2.5 2.5 0 0 1 6.5 2z" />
+      <path d="M8 7h8" />
+      <path d="M8 11h8" />
+    </svg>
+  ),
 };
 
 const mainNav = [
   { href: "/app", label: "Dashboard", icon: icons.dashboard },
-  { href: "/app/members", label: "Family", icon: icons.members },
   { href: "/app/time", label: "Time Management", icon: icons.time },
   { href: "/app/food", label: "Food", icon: icons.food },
+  { href: "/app/learn", label: "Learn", icon: icons.learn },
   { href: "/app/fitness", label: "Fitness", icon: icons.fitness },
   { href: "/app/reports", label: "Reports", icon: icons.reports },
-  { href: "/app/doctors", label: "Doctors", icon: icons.doctors },
-  { href: "/app/agency", label: "Agency", icon: icons.agency },
-  { href: "/app/messaging", label: "Messaging", icon: icons.messaging },
 ];
 
 const bottomNav = [
@@ -131,6 +137,30 @@ export function SidebarNav({
   const activeItem = (href: string) =>
     pathname === href || (href !== "/app" && pathname.startsWith(href));
 
+  React.useEffect(() => {
+    if (open) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      const onKey = (e: KeyboardEvent) => {
+        if (e.key === "Escape") onClose();
+      };
+      window.addEventListener("keydown", onKey);
+      return () => {
+        document.body.style.overflow = prev;
+        window.removeEventListener("keydown", onKey);
+      };
+    }
+  }, [open, onClose]);
+
+  // focus trap: keep focus inside sidebar when open on mobile
+  const asideRef = React.useRef<HTMLElement>(null);
+  React.useEffect(() => {
+    if (!open || !asideRef.current) return;
+    const el = asideRef.current;
+    const focusable = el.querySelectorAll<HTMLElement>('a[href], button:not([disabled])');
+    focusable[0]?.focus();
+  }, [open]);
+
   return (
     <>
       {open ? (
@@ -142,20 +172,21 @@ export function SidebarNav({
         />
       ) : null}
       <aside
+        ref={asideRef}
         className={cn(
           "fixed inset-y-0 left-0 z-50 w-64 -translate-x-full border-r border-line bg-surface transition-transform duration-300 ease-soft lg:translate-x-0",
           open && "translate-x-0",
         )}
         aria-label="Sidebar"
       >
-        <div className="flex h-full flex-col">
+        <div className="flex h-full flex-col overflow-y-auto overscroll-contain">
           <div className="flex h-16 items-center gap-2 px-6">
             <span className="font-display text-xl font-semibold text-ink">Aarogya</span>
             <span className="rounded-full bg-primary-soft px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
               Xomni
             </span>
           </div>
-          <div className="px-3 pb-2">
+          <div className="px-3 pb-2 pt-4">
             <Link
               href={xomniAction.href}
               className={cn(

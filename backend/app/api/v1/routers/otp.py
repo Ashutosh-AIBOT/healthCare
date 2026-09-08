@@ -15,7 +15,12 @@ async def send_otp(
     payload: SendOtpRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> OtpResponse:
+    from app.core.config import settings
+
     code = await otp_service.send(db, payload)
+    # Dev OTP disclosure only in non-production
+    if code is not None and settings.app_env == "production":
+        return OtpResponse(message="OTP sent")
     return OtpResponse(message="OTP sent" if code is None else f"Dev OTP: {code}")
 
 

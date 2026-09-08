@@ -23,11 +23,15 @@ export function ForgotPasswordForm() {
 
   const onSubmit = handleSubmit(async (values) => {
     setServerError(null);
-    const { error } = await apiClient("/api/auth/forgot-password", {
+    const { error } = await apiClient("/api/v1/auth/forgot-password", {
       method: "POST",
       body: JSON.stringify({ email: values.email }),
     });
     if (error) {
+      if (error.code === "AUTH_RATE_LIMITED" || error.status === 429) {
+        setServerError("Too many requests. Please wait before trying again.");
+        return;
+      }
       setServerError(error.detail || "Request failed.");
       return;
     }

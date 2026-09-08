@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     minio_bucket_private: str = "aarogya-private"
     minio_secure: bool = False
 
+    telegram_webhook_secret: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:

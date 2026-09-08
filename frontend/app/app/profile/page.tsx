@@ -309,7 +309,7 @@ export default function ProfilePage() {
         <p className="text-xs text-muted mb-4">
           Connect Xomni to Telegram. Message your bot and get AI responses. Chat history is saved automatically.
         </p>
-        <TelegramKeyForm existing={keysByProvider["telegram"]} onSaved={() => void load()} />
+        <TelegramKeyForm onSaved={() => void load()} />
       </div>
     </div>
   );
@@ -399,27 +399,75 @@ function ProviderKeyRow({
 }
 
 // ── TelegramKeyForm component ─────────────────────────────────────────────
-function TelegramKeyForm({ existing, onSaved }: { existing?: ApiKeyItem; onSaved: () => void }) {
+type TelegramStatus = {
+  active: boolean;
+  bot_username: string | null;
+  linked: boolean;
+  allowed_username: string | null;
+};
+
+function TelegramKeyForm({ onSaved }: { existing?: ApiKeyItem; onSaved: () => void }) {
   const [token, setToken] = useState("");
   const [username, setUsername] = useState("");
   const [show, setShow] = useState(false);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [status, setStatus] = useState<TelegramStatus | null>(null);
+  const [linkCode, setLinkCode] = useState<string | null>(null);
+  const [linking, setLinking] = useState(false);
+
+  useEffect(() => {
+    void (async () => {
+      const res = await apiClient<TelegramStatus>("/api/v1/integrations/telegram");
+      if (!res.error && res.data) setStatus(res.data);
+    })();
+  }, []);
 
   const save = async () => {
     if (!token.trim()) return;
     setSaving(true);
     setErr(null);
     setMsg(null);
-    // Save bot token as telegram provider key
-    const res = await apiClient<{ id: string }>("/api/v1/profile/api-keys/upsert", {
+    const res = await apiClient<TelegramStatus>("/api/v1/integrations/telegram", {
       method: "POST",
-      body: JSON.stringify({ provider: "telegram", api_key: token }),
+      body: JSON.stringify({ bot_token: token.trim(), username: username.trim() || null }),
     });
     setSaving(false);
     if (res.error) setErr(res.error.detail || "Failed to save.");
-    else { setMsg("Telegram bot token saved! Your bot is now active."); setToken(""); onSaved(); }
+    else {
+      setMsg(
+        res.data?.bot_username
+          ? `Verified @${res.data.bot_username}. Now link your chat below.`
+          : "Bot token saved and verified.",
+      );
+      setToken("");
+      if (res.data) setStatus(res.data);
+      onSaved();
+    }
+  };
+
+  const makeLinkCode = async () => {
+    setLinking(true);
+    setErr(null);
+    const res = await apiClient<{ code: string }>("/api/v1/integrations/telegram/link-code", {
+      method: "POST",
+      body: "{}",
+    });
+    setLinking(false);
+    if (res.error) setErr(res.error.detail || "Failed to create link code.");
+    else if (res.data) setLinkCode(res.data.code);
+  };
+
+  const unlink = async () => {
+    setErr(null);
+    const res = await apiClient("/api/v1/integrations/telegram", { method: "DELETE" });
+    if (res.error) setErr(res.error.detail || "Failed to unlink.");
+    else {
+      setStatus({ active: false, bot_username: null, linked: false, allowed_username: null });
+      setLinkCode(null);
+      onSaved();
+    }
   };
 
   return (
@@ -432,14 +480,14 @@ function TelegramKeyForm({ existing, onSaved }: { existing?: ApiKeyItem; onSaved
               type={show ? "text" : "password"}
               value={token}
               onChange={(e) => setToken(e.target.value)}
-              placeholder={existing?.is_active ? "••••• (update token)" : "123456789:ABC..."}
+              placeholder={status?.active ? "••••• (update token)" : "123456789:ABC..."}
               className="pr-10"
             />
             <button type="button" onClick={() => setShow((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-ink">
               {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
           </div>
-          <p className="text-[11px] text-muted mt-1">From @BotFather → /newbot</p>
+          <p className="text-[11px] text-muted mt-1">From @BotFather → /newbot (verified via getMe)</p>
         </div>
         <div>
           <label className="text-xs text-muted">Your Telegram Username (optional)</label>
@@ -447,23 +495,43 @@ function TelegramKeyForm({ existing, onSaved }: { existing?: ApiKeyItem; onSaved
           <p className="text-[11px] text-muted mt-1">To restrict bot to your account only</p>
         </div>
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <Button onClick={save} loading={saving} disabled={!token.trim() || saving}>
           Save Telegram Bot
         </Button>
-        {existing?.is_active && (
+        {status?.active && (
           <span className="flex items-center gap-1 text-xs text-healthy">
-            <CheckCircle2 className="h-3.5 w-3.5" /> Bot active
+            <CheckCircle2 className="h-3.5 w-3.5" />
+            {status.bot_username ? `@${status.bot_username} verified` : "Bot active"}
+            {status.linked ? " · chat linked" : ""}
           </span>
         )}
+        {status?.active && (
+          <button type="button" onClick={unlink} className="text-xs text-muted hover:text-critical">
+            Unlink
+          </button>
+        )}
       </div>
+      {status?.active && !status.linked && (
+        <div className="rounded-2xl border border-line bg-mist/30 p-4 space-y-2">
+          <p className="text-xs font-semibold text-ink">Link your Telegram chat</p>
+          <p className="text-xs text-muted">Generate a code, then send <code>/start CODE</code> to your bot. Expires in 10 minutes.</p>
+          <div className="flex items-center gap-3">
+            <Button onClick={makeLinkCode} loading={linking} size="sm">
+              Generate link code
+            </Button>
+            {linkCode && <code className="text-lg font-mono font-bold tracking-widest">{linkCode}</code>}
+          </div>
+        </div>
+      )}
       {err && <p className="text-xs text-critical">{err}</p>}
       {msg && <p className="text-xs text-healthy">{msg}</p>}
       <div className="rounded-2xl bg-mist/60 p-4 text-xs text-muted space-y-1">
         <p>📱 <strong>How to use:</strong></p>
-        <p>1. Create bot with @BotFather → /newbot → copy token above</p>
-        <p>2. Message your bot on Telegram — Xomni responds using NVIDIA + Groq</p>
-        <p>3. All chat history is saved to your account</p>
+        <p>1. Create bot with @BotFather → /newbot → paste token above</p>
+        <p>2. Generate a link code, send /start CODE to your bot</p>
+        <p>3. Message your bot — Xomni replies, history syncs to web</p>
+        <p>4. Try /todo, /tests, /report right from Telegram</p>
       </div>
     </div>
   );

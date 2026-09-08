@@ -64,14 +64,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const isXomni = pathname === "/app/xomni";
 
   return (
-    <div className="min-h-dvh bg-paper">
+    <div className={cn("bg-paper", isXomni ? "h-dvh overflow-hidden" : "min-h-dvh")}>
       <SidebarNav
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         pathname={pathname}
         onLogout={logout}
       />
-      <div className={cn("flex flex-col min-h-dvh", "lg:ml-64")}>
+      <div className={cn("flex flex-col lg:ml-64", isXomni ? "h-dvh" : "min-h-dvh")}>
         {!isXomni && <TopBar onToggleSidebar={() => setSidebarOpen(true)} />}
         {isXomni ? (
           <main className="flex-1 min-h-0 flex flex-col bg-paper">

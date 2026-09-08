@@ -13,6 +13,7 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+asyncpg://aarogya:aarogya@localhost:5432/aarogya"
     redis_url: str = "redis://localhost:6379/0"
+    telegram_webhook_url: str = ""
 
     llm_api_key: str = ""
     otp_dev_mode: bool = True

@@ -1,6 +1,4 @@
 # Secrets & env
-.env
-.env.*
 !.env.example
 frontend/.env.local
 
@@ -39,6 +37,9 @@ Thumbs.db
 .codex/
 .cursor/
 .idea/
-.vscode/
 *.code-workspace
 .github/copilot*
+branch_structure.json
+temp_auto_push.bat
+temp_interactive_push.bat
+config.bat

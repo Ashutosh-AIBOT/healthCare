@@ -25,6 +25,7 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     family_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("families.id", ondelete="SET NULL"), index=True, nullable=True
     )
+    ai_context: Mapped[str | None] = mapped_column(Text, nullable=True)
     family_memberships: Mapped[list["FamilyMember"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )

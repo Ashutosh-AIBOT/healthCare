@@ -10,6 +10,7 @@ from app.core.errors import AppError
 from app.models.user import User
 from app.models.api_keys import ApiKey
 from app.schemas.api_keys import ApiKeyCreate, ApiKeyRead, ApiKeyUpdate
+from app.schemas.auth import ProfileUpdate, UserOut
 
 
 router = APIRouter(prefix="/profile", tags=["profile"])
@@ -20,6 +21,32 @@ async def _get_user_family_id(db: AsyncSession, current_user: User) -> uuid.UUID
     if current_user.family_id is None:
         raise AppError(code="NO_FAMILY", status=400, detail="User does not belong to a family.")
     return current_user.family_id
+
+
+@router.put("/me", response_model=UserOut)
+async def update_my_profile(
+    payload: ProfileUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> UserOut:
+    """Update user's profile (name, handle, AI context)."""
+    # Check handle uniqueness if provided
+    if payload.handle is not None and payload.handle != current_user.handle:
+        stmt = select(User).where(User.handle == payload.handle, User.id != current_user.id)
+        existing = (await db.execute(stmt)).scalar_one_or_none()
+        if existing:
+            raise AppError(code="HANDLE_TAKEN", status=400, detail="Handle is already taken.")
+        current_user.handle = payload.handle
+
+    if payload.full_name is not None:
+        current_user.full_name = payload.full_name
+
+    if payload.ai_context is not None:
+        current_user.ai_context = payload.ai_context
+
+    await db.commit()
+    await db.refresh(current_user)
+    return current_user
 
 
 @router.post("/api-keys", response_model=ApiKeyRead)

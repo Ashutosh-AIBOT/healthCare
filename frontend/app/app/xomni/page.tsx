@@ -6,9 +6,15 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import {
   Plus, Send, ChevronRight, Menu, Mic, MicOff, Settings2,
-  Utensils, Clock, Activity, FileText, Sparkles, X, Volume2,
+  Utensils, Clock, Activity, FileText, Sparkles, X, Volume2, Search,
+  MoreHorizontal, Link2, Download, History, BrainCircuit, ActivitySquare
 } from "lucide-react";
-import { getAccessToken } from "@/lib/auth-client";
+import { apiClient, getAccessToken, setAccessToken } from "@/lib/auth-client";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { Radio } from "lucide-react";
+import { LiveKitVoiceModal } from "@/components/xomni/livekit-voice-modal";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -20,6 +26,7 @@ interface Message {
   content: string;
   createdAt: Date;
   streaming?: boolean;
+  action?: any;
 }
 
 interface Conversation {
@@ -29,22 +36,49 @@ interface Conversation {
   updated_at: string;
 }
 
+type Me = {
+  full_name: string | null;
+  handle: string | null;
+  email: string;
+  role: string;
+};
+
 type ChatMode = "general" | "food" | "timetable" | "reports" | "fitness";
 
 const MODE_META: Record<ChatMode, { label: string; icon: React.ReactNode; color: string; prompt: string }> = {
-  general:   { label: "General",    icon: <Sparkles className="h-4 w-4" />, color: "text-primary",  prompt: "Ask me anything…" },
-  food:      { label: "Food & Nutrition", icon: <Utensils className="h-4 w-4" />, color: "text-emerald-600", prompt: "Ask about food, nutrition, BMI…" },
-  timetable: { label: "Timetable",  icon: <Clock className="h-4 w-4" />,    color: "text-amber-600", prompt: "Add a task, plan your day…" },
-  fitness:   { label: "Fitness",    icon: <Activity className="h-4 w-4" />, color: "text-blue-600",  prompt: "Ask about workouts, fitness goals…" },
-  reports:   { label: "Reports",    icon: <FileText className="h-4 w-4" />, color: "text-violet-600", prompt: "Ask about your lab report values…" },
+  general:   { label: "General",    icon: <Sparkles className="h-4 w-4" />, color: "text-primary",  prompt: "Ask me anything..." },
+  food:      { label: "Food",       icon: <Utensils className="h-4 w-4" />, color: "text-emerald-600", prompt: "Ask about food & nutrition..." },
+  timetable: { label: "Timetable",  icon: <Clock className="h-4 w-4" />,    color: "text-amber-600", prompt: "Plan your day..." },
+  fitness:   { label: "Fitness",    icon: <Activity className="h-4 w-4" />, color: "text-blue-600",  prompt: "Ask about workouts..." },
+  reports:   { label: "Reports",    icon: <FileText className="h-4 w-4" />, color: "text-violet-600", prompt: "Ask about lab reports..." },
 };
 
-const QUICK_PROMPTS: Record<ChatMode, string[]> = {
-  general:   ["What should I eat today?", "How much water should I drink?", "Tips for better sleep"],
-  food:      ["How much protein do I need daily?", "Best veg protein sources", "What fruits are high in iron?", "Suggest a 1500 cal diet plan"],
-  timetable: ["Add gym session at 7am", "Schedule study at 9-11am", "What's my most productive time?"],
-  fitness:   ["Best workout for weight loss", "How to build muscle fast", "Pre-workout meal ideas"],
-  reports:   ["Explain my cholesterol values", "What does low hemoglobin mean?", "Is my blood sugar normal?"],
+const QUICK_PROMPTS: Record<ChatMode, Array<{title: string, desc: string}>> = {
+  general:   [
+    { title: "Synthesize Data", desc: "Turn my meeting notes into 5 key bullet points." },
+    { title: "Creative Brainstorm", desc: "Generate 3 taglines for a new brand." },
+    { title: "Check Facts", desc: "Compare key differences between diets." }
+  ],
+  food:      [
+    { title: "Protein Needs", desc: "How much protein do I need daily?" },
+    { title: "Veg Sources", desc: "Best vegetarian protein sources." },
+    { title: "Diet Plan", desc: "Suggest a 1500 cal diet plan." }
+  ],
+  timetable: [
+    { title: "Morning Routine", desc: "Add gym session at 7am." },
+    { title: "Focus Blocks", desc: "Schedule study at 9-11am." },
+    { title: "Optimization", desc: "What's my most productive time?" }
+  ],
+  fitness:   [
+    { title: "Weight Loss", desc: "Best workout for weight loss." },
+    { title: "Muscle Gain", desc: "How to build muscle fast." },
+    { title: "Nutrition", desc: "Pre-workout meal ideas." }
+  ],
+  reports:   [
+    { title: "Cholesterol", desc: "Explain my cholesterol values." },
+    { title: "Hemoglobin", desc: "What does low hemoglobin mean?" },
+    { title: "Blood Sugar", desc: "Is my blood sugar normal?" }
+  ],
 };
 
 // ── Voice state ─────────────────────────────────────────────────────────────
@@ -53,42 +87,103 @@ type VoiceState = "idle" | "requesting" | "recording" | "transcribing" | "error"
 
 // ── Component ───────────────────────────────────────────────────────────────
 
+function ProposalCard({ action, onAccept, onReject }: { action: any, onAccept: () => void, onReject: () => void }) {
+  if (!action || !action.action) return null;
+  const isMealPlan = action.action === "propose_meal_plan";
+  const isTodo = action.action === "propose_todo";
+  
+  if (!isMealPlan && !isTodo) return null;
+
+  return (
+    <div className="mt-4 border border-primary/20 bg-primary-soft/30 rounded-xl p-4 shadow-sm w-full max-w-sm">
+      <div className="flex items-center gap-2 mb-3">
+        <Sparkles className="h-4 w-4 text-primary" />
+        <h4 className="text-sm font-semibold text-ink">
+          {isMealPlan ? "Meal Plan Update Proposed" : "Schedule Update Proposed"}
+        </h4>
+      </div>
+      
+      <div className="text-[13px] text-ink/80 mb-4 bg-surface p-3 rounded-lg border border-line/50">
+        {isMealPlan && action.proposal && (
+          <pre className="whitespace-pre-wrap font-sans text-xs">
+            {JSON.stringify(action.proposal, null, 2)}
+          </pre>
+        )}
+        {isTodo && (
+          <div>
+            <p className="font-medium text-ink">{action.title}</p>
+            <p className="text-muted text-xs mt-1">Time: {action.start_hour}:00 - {action.end_hour}:00</p>
+          </div>
+        )}
+      </div>
+      
+      <div className="flex gap-2">
+        <Button onClick={onAccept} size="sm" className="w-full bg-primary hover:bg-primary/90 text-white shadow-sm">
+          Accept
+        </Button>
+        <Button onClick={onReject} size="sm" variant="outline" className="w-full">
+          Reject
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export default function XomniPage() {
+  const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [rightOpen, setRightOpen] = useState(true);
-  const [mode, setMode] = useState<ChatMode>("food");
-  const [promptOpen, setPromptOpen] = useState(false);
-  const [userPromptPrefix, setUserPromptPrefix] = useState("");
-  const [promptDraft, setPromptDraft] = useState("");
+  const [leftOpen, setLeftOpen] = useState(true);
+  const [mode, setMode] = useState<ChatMode>("general");
+  const [modeDropdown, setModeDropdown] = useState(false);
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [ttsEnabled, setTtsEnabled] = useState(true);
+  const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
+
+  // Profile / TopBar state
+  const [me, setMe] = useState<Me | null>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
+
+  // TODO (AI Profile slice): wire Your-AI-Profile modal to these hooks.
+  // Added to unblock build — the "Your AI Profile" button references them.
+  const [userPromptPrefix] = useState("");
+  const [promptDraft, setPromptDraft] = useState("");
+  void promptDraft;
+  const [promptOpen, setPromptOpen] = useState(false);
+  void promptOpen;
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   // ── Scroll to bottom ────────────────────────────────────────────────────
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // ── Load conversation history on mount ──────────────────────────────────
+  // ── Load conversation history & user data on mount ────────────────────────
   useEffect(() => {
+    let cancelled = false;
     void loadConversations();
-    // Start with welcome message
-    setMessages([{
-      id: "welcome",
-      role: "assistant",
-      content: "Hi! I'm **Xomni** — your food, fitness and health AI. I can talk about any food (veg or non-veg), calculate your nutrition needs, plan meals, and help manage your schedule.\n\nTry switching modes above or pick a quick prompt below. 🌱",
-      createdAt: new Date(),
-    }]);
+    
+    const loadMe = async () => {
+      const token = getAccessToken();
+      const headers: Record<string, string> = {};
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const { data } = await apiClient<Me>("/api/v1/auth/me", { headers });
+      if (!cancelled && data?.email) {
+        setMe(data);
+      }
+    };
+    void loadMe();
+
+    return () => { cancelled = true; };
   }, []);
 
   const loadConversations = async () => {
@@ -104,6 +199,33 @@ export default function XomniPage() {
       }
     } catch { /* silent */ }
   };
+
+  useEffect(() => {
+    if (!profileOpen) return;
+    const onClickOutside = (e: MouseEvent) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target as Node)) setProfileOpen(false);
+    };
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setProfileOpen(false);
+    };
+    document.addEventListener("mousedown", onClickOutside);
+    document.addEventListener("keydown", onEsc);
+    return () => {
+      document.removeEventListener("mousedown", onClickOutside);
+      document.removeEventListener("keydown", onEsc);
+    };
+  }, [profileOpen]);
+
+  const handleLogout = async () => {
+    setProfileOpen(false);
+    await apiClient("/api/v1/auth/logout", { method: "POST", body: "{}" });
+    setAccessToken(null);
+    router.replace("/login");
+    router.refresh();
+  };
+
+  const initial = (me?.full_name?.trim()?.[0] || me?.handle?.[0] || me?.email?.[0] || "A").toUpperCase();
+  const displayName = me?.full_name || me?.handle || me?.email || "Account";
 
   // ── TTS helper ──────────────────────────────────────────────────────────
   const speak = (text: string) => {
@@ -155,7 +277,6 @@ export default function XomniPage() {
             message: content,
             mode,
             conversation_id: activeConvId,
-            user_prompt_prefix: userPromptPrefix || null,
             stream: true,
           }),
         });
@@ -165,10 +286,8 @@ export default function XomniPage() {
           throw new Error(txt || `Error ${res.status}`);
         }
 
-        // Handle SSE stream
         const reader = res.body?.getReader();
         const decoder = new TextDecoder();
-
         if (!reader) throw new Error("No response stream");
 
         let buffer = "";
@@ -180,41 +299,49 @@ export default function XomniPage() {
           const lines = buffer.split("\n");
           buffer = lines.pop() ?? "";
 
+          let currentEvent = "message";
           for (const line of lines) {
-            if (line.startsWith("event: meta")) continue;
-            if (line.startsWith("event: done")) {
-              // Conversation ID from meta
+            if (line.startsWith("event: ")) {
+              currentEvent = line.slice(7).trim();
+              continue;
             }
             if (line.startsWith("data: ")) {
               try {
                 const payload = JSON.parse(line.slice(6));
-                if (payload.token) {
-                  fullText += payload.token;
-                  setMessages((prev) =>
-                    prev.map((m) =>
-                      m.id === assistantId ? { ...m, content: fullText } : m
-                    )
-                  );
-                }
-                if (payload.conversation_id) {
-                  setActiveConvId(payload.conversation_id);
+                
+                if (currentEvent === "meta") {
+                  if (payload.action) {
+                    setMessages((prev) =>
+                      prev.map((m) =>
+                        m.id === assistantId ? { ...m, action: payload.action } : m
+                      )
+                    );
+                  }
+                  if (payload.conversation_id && payload.conversation_id !== activeConvId) {
+                    setActiveConvId(payload.conversation_id);
+                  }
+                } else {
+                  if (payload.token) {
+                    fullText += payload.token;
+                    setMessages((prev) =>
+                      prev.map((m) =>
+                        m.id === assistantId ? { ...m, content: fullText } : m
+                      )
+                    );
+                  }
                 }
               } catch { /* ignore parse errors */ }
             }
           }
         }
 
-        // Finalize (stop streaming indicator)
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantId ? { ...m, streaming: false } : m
           )
         );
 
-        // TTS for assistant response
         if (fullText) speak(fullText);
-
-        // Reload conversation list
         void loadConversations();
       } catch (e) {
         const errMsg = e instanceof Error ? e.message : "Something went wrong.";
@@ -230,10 +357,10 @@ export default function XomniPage() {
         setLoading(false);
       }
     },
-    [loading, mode, activeConvId, userPromptPrefix, ttsEnabled]
+    [loading, mode, activeConvId, ttsEnabled]
   );
 
-  // ── Voice recording (Groq Whisper STT) ─────────────────────────────────
+  // ── Voice recording ──────────────────────────────────────────────────────
   const startVoiceRecording = async () => {
     setVoiceError(null);
     setVoiceState("requesting");
@@ -278,19 +405,18 @@ export default function XomniPage() {
           const data = await res.json() as { transcript: string };
           if (data.transcript.trim()) {
             setInput(data.transcript);
-            // Auto-send after voice transcription
             await send(data.transcript);
           } else {
             setVoiceError("Could not understand audio. Please try again.");
           }
         } catch (e) {
-          setVoiceError(e instanceof Error ? e.message : "Voice failed. Add Groq API key in Profile.");
+          setVoiceError(e instanceof Error ? e.message : "Voice failed. Check API key.");
         } finally {
           setVoiceState("idle");
         }
       };
 
-      recorder.start(250); // collect chunks every 250ms
+      recorder.start(250);
       mediaRecorderRef.current = recorder;
       setVoiceState("recording");
     } catch (e) {
@@ -336,319 +462,437 @@ export default function XomniPage() {
 
   const startNewChat = () => {
     setActiveConvId(null);
-    setMessages([{
-      id: "welcome",
-      role: "assistant",
-      content: "New conversation started. What would you like to talk about?",
-      createdAt: new Date(),
-    }]);
+    setMessages([]);
   };
+
+  const isEmpty = messages.length === 0;
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div className="flex h-[calc(100dvh-4rem)] overflow-hidden bg-paper">
-
-      {/* ── Center chat area ────────────────────────────────────────────── */}
-      <div className="flex flex-1 flex-col min-w-0">
-
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-line/50 bg-surface/80 backdrop-blur">
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-violet-600 text-white text-sm font-bold shadow">
-              X
-            </div>
-            <div>
-              <h1 className="font-display text-sm font-semibold text-ink leading-none">Xomni</h1>
-              <p className="text-[11px] text-muted mt-0.5">
-                NVIDIA Nemotron · Groq Whisper · {ttsEnabled ? "Voice On" : "Voice Off"}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setTtsEnabled((v) => !v)}
-              title={ttsEnabled ? "Mute voice" : "Enable voice"}
-              className={cn(
-                "p-2 rounded-xl transition-colors",
-                ttsEnabled ? "text-primary bg-primary-soft" : "text-muted hover:bg-mist"
-              )}
-            >
-              <Volume2 className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => { setPromptDraft(userPromptPrefix); setPromptOpen(true); }}
-              title="Set your preferences"
-              className="p-2 rounded-xl text-muted hover:bg-mist hover:text-ink transition-colors"
-            >
-              <Settings2 className="h-4 w-4" />
-            </button>
-            <button onClick={startNewChat} className="p-2 rounded-xl text-muted hover:bg-mist hover:text-ink transition-colors">
-              <Plus className="h-4 w-4" />
-            </button>
-            <button onClick={() => setRightOpen((v) => !v)} className="p-2 rounded-xl text-muted hover:bg-mist hover:text-ink transition-colors">
-              {rightOpen ? <ChevronRight className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
-            </button>
-          </div>
-        </div>
-
-        {/* Mode selector */}
-        <div className="flex gap-1.5 px-4 py-2 border-b border-line/30 bg-surface/60 overflow-x-auto no-scrollbar">
-          {(Object.keys(MODE_META) as ChatMode[]).map((m) => {
-            const meta = MODE_META[m];
-            return (
-              <button
-                key={m}
-                onClick={() => setMode(m)}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-all",
-                  mode === m
-                    ? "bg-primary text-primary-foreground shadow-sm"
-                    : "text-muted hover:bg-mist hover:text-ink"
-                )}
-              >
-                <span className={mode === m ? "text-primary-foreground" : meta.color}>
-                  {meta.icon}
-                </span>
-                {meta.label}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-4 py-6 no-scrollbar">
-          <div className="mx-auto max-w-3xl space-y-5">
-
-            {/* Quick prompts (only when 1 message) */}
-            {messages.length <= 1 && (
-              <div className="mt-2 space-y-3">
-                <p className="text-xs font-medium text-muted text-center">Quick prompts for {MODE_META[mode].label}</p>
-                <div className="flex flex-wrap gap-2 justify-center">
-                  {QUICK_PROMPTS[mode].map((q) => (
-                    <button
-                      key={q}
-                      onClick={() => void send(q)}
-                      className="rounded-2xl border border-line bg-surface px-4 py-2 text-sm text-ink hover:bg-mist hover:border-primary/40 transition-all"
-                    >
-                      {q}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Message bubbles */}
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={cn(
-                  "flex gap-3 text-sm leading-relaxed",
-                  message.role === "user" ? "justify-end" : "justify-start"
-                )}
-              >
-                {message.role === "assistant" && (
-                  <span className="mt-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-violet-600 text-xs font-bold text-white shadow-sm">
-                    X
-                  </span>
-                )}
-                <div
-                  className={cn(
-                    "max-w-[82%] rounded-2xl px-4 py-3",
-                    message.role === "user"
-                      ? "bg-primary text-primary-foreground rounded-tr-md"
-                      : "bg-mist text-ink rounded-tl-md"
-                  )}
-                >
-                  {message.role === "assistant" ? (
-                    <div className="prose prose-sm max-w-none prose-p:my-1 prose-headings:mt-2">
-                      {/* Simple markdown-like rendering */}
-                      {message.content.split("\n").map((line, i) => {
-                        const bold = line.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
-                        return (
-                          <p
-                            key={i}
-                            className={line.startsWith("- ") ? "ml-3" : ""}
-                            dangerouslySetInnerHTML={{ __html: bold || "&nbsp;" }}
-                          />
-                        );
-                      })}
-                      {message.streaming && (
-                        <span className="inline-flex items-center gap-1 ml-1">
-                          <span className="h-1.5 w-1.5 rounded-full bg-primary animate-bounce" style={{ animationDuration: "700ms" }} />
-                          <span className="h-1.5 w-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "140ms", animationDuration: "700ms" }} />
-                          <span className="h-1.5 w-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "280ms", animationDuration: "700ms" }} />
-                        </span>
-                      )}
-                    </div>
-                  ) : (
-                    <p className="whitespace-pre-wrap">{message.content}</p>
-                  )}
-                </div>
-              </div>
-            ))}
-
-            <div ref={bottomRef} />
-          </div>
-        </div>
-
-        {/* Input area */}
-        <div className="border-t border-line/50 bg-surface/90 backdrop-blur px-4 py-3">
-          <div className="mx-auto max-w-3xl space-y-2">
-            {error && (
-              <p className="text-xs text-critical bg-critical/5 rounded-xl px-3 py-1.5">{error}</p>
-            )}
-            {(voiceError || voiceState === "recording" || voiceState === "transcribing") && (
-              <div className={cn(
-                "text-xs rounded-xl px-3 py-1.5 flex items-center gap-2",
-                voiceState === "recording" ? "bg-rose-50 text-rose-700 animate-pulse" :
-                voiceState === "transcribing" ? "bg-amber-50 text-amber-700" :
-                "bg-critical/5 text-critical"
-              )}>
-                {voiceState === "recording" && <><Mic className="h-3 w-3" /> Recording… tap again to stop</>}
-                {voiceState === "transcribing" && <><span className="h-3 w-3 animate-spin rounded-full border-2 border-amber-600 border-t-transparent" /> Transcribing with Groq Whisper…</>}
-                {voiceError && voiceError}
-              </div>
-            )}
-
-            <div className="flex items-end gap-2">
-              {/* Voice button */}
-              <button
-                onClick={toggleVoice}
-                disabled={voiceState === "transcribing" || voiceState === "requesting"}
-                title="Voice input (Groq Whisper)"
-                className={cn(
-                  "flex-shrink-0 h-11 w-11 flex items-center justify-center rounded-2xl transition-all",
-                  voiceState === "recording"
-                    ? "bg-rose-500 text-white animate-pulse shadow-lg shadow-rose-200"
-                    : voiceState === "transcribing"
-                    ? "bg-amber-100 text-amber-700 cursor-not-allowed"
-                    : "bg-mist text-muted hover:bg-primary-soft hover:text-primary"
-                )}
-              >
-                {voiceState === "recording" ? (
-                  <MicOff className="h-5 w-5" />
-                ) : voiceState === "transcribing" ? (
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-amber-600 border-t-transparent" />
-                ) : (
-                  <Mic className="h-5 w-5" />
-                )}
-              </button>
-
-              {/* Text input */}
-              <Input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder={MODE_META[mode].prompt}
-                className="flex-1 rounded-2xl border-line bg-surface px-4 py-3 text-sm outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/10"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    void send(input);
-                  }
-                }}
-              />
-
-              {/* Send button */}
-              <Button
-                onClick={() => void send(input)}
-                disabled={!input.trim() || loading}
-                className="h-11 w-11 rounded-2xl p-0 flex-shrink-0"
-              >
-                {loading ? (
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                ) : (
-                  <Send className="h-4 w-4" />
-                )}
-              </Button>
-            </div>
-            <p className="text-[10px] text-muted/60 text-center">
-              Chat: NVIDIA Nemotron · Stream: Groq LLaMA-3.3 · Voice: Groq Whisper
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* ── Right sidebar (conversations) ───────────────────────────────── */}
+    <div className="flex flex-1 w-full overflow-hidden bg-paper">
+      
+      {/* ── Left Sidebar (History & Nav) ───────────────────────── */}
       <aside
         className={cn(
-          "flex flex-col border-l border-line bg-surface transition-all duration-300 ease-out overflow-hidden",
-          rightOpen ? "w-72" : "w-0"
+          "flex-shrink-0 flex flex-col border-r border-line/40 bg-surface transition-all duration-300 ease-out z-10",
+          leftOpen ? "w-64 sm:w-72" : "w-0 hidden md:flex md:w-0"
         )}
       >
-        <div className="px-4 py-3 border-b border-line flex items-center justify-between shrink-0">
-          <h2 className="font-semibold text-sm text-ink">Conversations</h2>
-          <span className="text-xs text-muted bg-mist rounded-lg px-2 py-0.5">{conversations.length}</span>
+        {/* Brand & New Chat */}
+        <div className="p-4 space-y-4 shrink-0">
+          <div className="flex items-center gap-2 px-1">
+            <div className="h-6 w-6 bg-gradient-to-br from-primary to-violet-600 rounded-md flex items-center justify-center text-white text-[10px] font-bold shadow-sm">
+              X
+            </div>
+            <h2 className="font-semibold text-ink text-[15px] tracking-tight">Xomni</h2>
+          </div>
+          
+          <Button 
+            onClick={startNewChat} 
+            className="w-full justify-start gap-2 bg-ink text-paper hover:bg-ink/90 rounded-xl h-11 shadow-sm"
+          >
+            <Plus className="h-4 w-4" />
+            New chat
+          </Button>
+
+          <div className="relative">
+            <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+            <input 
+              className="w-full bg-mist/50 border border-transparent rounded-xl pl-9 pr-8 py-2 text-[13px] outline-none focus:bg-surface focus:border-line/50 focus:ring-2 focus:ring-primary/10 transition-all text-ink placeholder:text-muted" 
+              placeholder="Search" 
+            />
+          </div>
         </div>
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+
+        {/* Nav links (Simulated) */}
+        <div className="px-4 pb-2 space-y-1 shrink-0">
+          <button className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-medium text-muted hover:text-ink hover:bg-mist/50 transition-colors">
+            <Sparkles className="h-4 w-4" /> Explore
+          </button>
+          <button className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-medium text-muted hover:text-ink hover:bg-mist/50 transition-colors">
+            <FileText className="h-4 w-4" /> Library
+          </button>
+          <button className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-medium text-ink bg-mist/50 transition-colors">
+            <History className="h-4 w-4 text-primary" /> History
+          </button>
+        </div>
+
+        {/* History List */}
+        <div className="flex-1 overflow-y-auto px-2 py-4 space-y-1 no-scrollbar mt-2">
+          <div className="px-3 pb-2">
+            <p className="text-[11px] font-semibold text-muted/60 uppercase tracking-wider">Today</p>
+          </div>
           {conversations.length === 0 ? (
-            <p className="text-xs text-muted px-3 py-4 text-center">Your conversations will appear here.</p>
+            <p className="text-[13px] text-muted px-4 py-2">No history yet.</p>
           ) : (
             conversations.map((conv) => (
               <button
                 key={conv.id}
                 onClick={() => void loadConversation(conv.id)}
                 className={cn(
-                  "w-full text-left rounded-xl px-3 py-2.5 transition-colors group",
-                  activeConvId === conv.id ? "bg-primary-soft" : "hover:bg-mist"
+                  "w-full text-left rounded-xl px-3 py-2 transition-colors group flex flex-col gap-0.5",
+                  activeConvId === conv.id ? "bg-mist/60 text-ink" : "text-muted hover:bg-mist/30 hover:text-ink"
                 )}
               >
-                <div className="flex items-start justify-between gap-1">
-                  <p className={cn(
-                    "text-xs font-medium truncate leading-snug",
-                    activeConvId === conv.id ? "text-primary" : "text-ink"
-                  )}>
-                    {conv.title}
-                  </p>
-                  <span className={cn(
-                    "text-[10px] shrink-0 rounded-lg px-1.5 py-0.5 mt-0.5",
-                    MODE_META[conv.mode as ChatMode]?.color || "text-muted",
-                    "bg-mist/80"
-                  )}>
-                    {conv.mode}
-                  </span>
-                </div>
-                <p className="text-[10px] text-muted mt-0.5">
-                  {new Date(conv.updated_at).toLocaleDateString()}
-                </p>
+                <p className="text-[13px] truncate font-medium">{conv.title}</p>
               </button>
             ))
           )}
         </div>
+
+        {/* Preferences / AI Profile */}
+        <div className="p-4 shrink-0">
+          <button 
+            onClick={() => { setPromptDraft(userPromptPrefix); setPromptOpen(true); }}
+            className="w-full flex items-center gap-3 p-2 rounded-xl hover:bg-mist/50 transition-colors"
+          >
+            <div className="h-8 w-8 rounded-full bg-gradient-to-tr from-amber-200 to-rose-200 flex items-center justify-center shrink-0">
+              <Settings2 className="h-4 w-4 text-rose-800" />
+            </div>
+            <div className="flex-1 text-left min-w-0">
+              <p className="text-[13px] font-medium text-ink truncate">Your AI Profile</p>
+              <p className="text-[11px] text-muted truncate">Set dietary & fitness goals</p>
+            </div>
+            <ChevronRight className="h-4 w-4 text-muted shrink-0" />
+          </button>
+        </div>
       </aside>
 
-      {/* ── Prompt preferences modal ─────────────────────────────────────── */}
-      {promptOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="bg-surface rounded-3xl shadow-lift p-6 w-full max-w-md mx-4">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-ink">Your Preferences</h2>
-              <button onClick={() => setPromptOpen(false)} className="text-muted hover:text-ink">
-                <X className="h-4 w-4" />
+      {/* ── Main Chat Area ────────────────────────────────────────────── */}
+      <main className="flex-1 flex flex-col relative min-w-0 bg-paper">
+        
+        {/* Header - seamlessly integrated */}
+        <header className="h-16 shrink-0 flex items-center justify-between px-6 z-20 bg-surface/50 backdrop-blur border-b border-line/30">
+          <div className="flex items-center gap-2">
+            <button onClick={() => setLeftOpen(!leftOpen)} className="md:hidden p-2 -ml-2 rounded-xl text-muted hover:bg-mist">
+              <Menu className="h-5 w-5" />
+            </button>
+            
+            {/* Mode Dropdown */}
+            <div className="relative">
+              <button 
+                onClick={() => setModeDropdown(!modeDropdown)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-mist transition-colors text-[13px] font-medium text-ink"
+              >
+                <div className={cn("h-4 w-4 rounded-full flex items-center justify-center", MODE_META[mode].color, "bg-mist")}>
+                  {MODE_META[mode].icon}
+                </div>
+                Xomni {MODE_META[mode].label}
+                <ChevronRight className={cn("h-3 w-3 text-muted transition-transform", modeDropdown && "rotate-90")} />
               </button>
+              
+              {modeDropdown && (
+                <div className="absolute top-full left-0 mt-1 w-48 bg-surface border border-line rounded-xl shadow-lift py-1 z-50">
+                  {(Object.keys(MODE_META) as ChatMode[]).map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => { setMode(m); setModeDropdown(false); }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-[13px] text-ink hover:bg-mist transition-colors"
+                    >
+                      <span className={MODE_META[m].color}>{MODE_META[m].icon}</span>
+                      {MODE_META[m].label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-            <p className="text-xs text-muted mb-3">
-              Tell Xomni about your dietary restrictions, dislikes, allergies, or preferences.
-              This is sent with every message.
-            </p>
-            <textarea
-              value={promptDraft}
-              onChange={(e) => setPromptDraft(e.target.value)}
-              placeholder="E.g. I'm vegetarian, allergic to nuts, don't like bitter foods, prefer low-carb meals..."
-              rows={5}
-              className="w-full rounded-2xl border border-line bg-paper px-4 py-3 text-sm outline-none resize-none focus:border-primary focus:ring-2 focus:ring-primary/10"
-            />
-            <div className="flex gap-2 mt-4 justify-end">
-              <Button variant="outline" onClick={() => setPromptOpen(false)}>Cancel</Button>
-              <Button onClick={() => {
-                setUserPromptPrefix(promptDraft);
-                setPromptOpen(false);
-              }}>
-                Save
-              </Button>
+          </div>
+          
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setIsVoiceModalOpen(true)}
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground text-[12px] font-medium rounded-lg hover:bg-primary-hover shadow-sm transition-all"
+            >
+              <Radio className="h-3.5 w-3.5 animate-pulse" />
+              LiveKit Voice Talk
+            </button>
+            <button 
+              onClick={() => setTtsEnabled(!ttsEnabled)}
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-ink text-paper text-[12px] font-medium rounded-lg hover:bg-ink/90 transition-colors"
+            >
+              {ttsEnabled ? <Volume2 className="h-3.5 w-3.5" /> : <MicOff className="h-3.5 w-3.5" />}
+              {ttsEnabled ? "Voice On" : "Voice Off"}
+            </button>
+            <div className="h-6 w-px bg-line/60 mx-1 hidden sm:block" />
+            <ThemeToggle className="rounded-xl p-2 text-muted hover:bg-mist hover:text-ink" />
+            
+            {/* Profile Dropdown imported from TopBar logic */}
+            <div className="relative" ref={profileMenuRef}>
+              <button
+                type="button"
+                onClick={() => setProfileOpen((v) => !v)}
+                className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-soft text-sm font-semibold text-primary ring-1 ring-line/30 transition hover:bg-primary-soft/80"
+              >
+                {initial}
+              </button>
+              {profileOpen ? (
+                <div
+                  role="menu"
+                  className="absolute right-0 z-50 mt-2 w-64 overflow-hidden rounded-2xl border border-line bg-surface p-2 shadow-lift"
+                >
+                  <div className="rounded-xl bg-mist/50 px-3 py-3">
+                    <p className="truncate text-sm font-semibold text-ink" title={displayName}>
+                      {displayName}
+                    </p>
+                    {me?.email ? <p className="truncate text-xs text-muted">{me.email}</p> : null}
+                    {me?.role ? <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-primary">{me.role.replaceAll("_", " ")}</p> : null}
+                  </div>
+                  <div className="mt-2 grid gap-1">
+                    <Link
+                      href="/app/profile"
+                      onClick={() => setProfileOpen(false)}
+                      className="rounded-xl px-3 py-2 text-sm font-medium text-ink hover:bg-mist"
+                    >
+                      View profile
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={handleLogout}
+                      className="rounded-xl px-3 py-2 text-left text-sm font-semibold text-critical hover:bg-critical/10"
+                    >
+                      Logout
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </header>
+
+        {/* Content Area */}
+        <div className="flex-1 flex flex-col relative min-w-0 bg-paper overflow-hidden">
+          
+          <div className="flex-1 overflow-y-auto no-scrollbar relative flex flex-col">
+            {isEmpty ? (
+              // ── EMPTY STATE (Cortex Style) ──
+              <div className="flex-1 flex flex-col items-center justify-center px-4 md:px-8 pb-12 w-full max-w-4xl mx-auto">
+                {/* Center Orb/Logo */}
+                <div className="h-24 w-24 rounded-full bg-gradient-to-br from-violet-300 via-primary/50 to-rose-200 blur-xl opacity-60 absolute top-1/4 -translate-y-1/2" />
+                <div className="relative z-10 h-16 w-16 rounded-full bg-gradient-to-br from-white to-primary-soft shadow-lg shadow-primary/10 flex items-center justify-center mb-6 border border-white/50">
+                  <Sparkles className="h-6 w-6 text-primary" />
+                </div>
+              
+                <h1 className="text-2xl sm:text-3xl font-display font-medium text-primary text-center mb-1">
+                  Hello there
+                </h1>
+                <h2 className="text-3xl sm:text-4xl font-display font-semibold text-ink text-center mb-8 tracking-tight">
+                  How can I assist you today?
+                </h2>
+              </div>
+            ) : (
+              // ── ACTIVE CHAT STATE ──
+              <div className="flex-1 flex flex-col max-w-3xl mx-auto w-full px-4 pt-6 pb-6">
+                <div className="space-y-6">
+                {messages.map((message) => (
+                  <div
+                    key={message.id}
+                    className={cn(
+                      "flex gap-4",
+                      message.role === "user" ? "justify-end" : "justify-start"
+                    )}
+                  >
+                    {message.role === "assistant" && (
+                      <div className="h-8 w-8 shrink-0 rounded-full bg-gradient-to-br from-primary to-violet-600 flex items-center justify-center shadow-sm">
+                        <Sparkles className="h-4 w-4 text-white" />
+                      </div>
+                    )}
+                    <div
+                      className={cn(
+                        "max-w-[85%] sm:max-w-[80%]",
+                        message.role === "user" ? "items-end" : "items-start"
+                      )}
+                    >
+                      <div className={cn(
+                        "px-5 py-3.5 text-[14px] leading-relaxed",
+                        message.role === "user"
+                          ? "bg-mist rounded-[1.5rem] text-ink"
+                          : "bg-transparent text-ink"
+                      )}>
+                        {message.role === "assistant" ? (
+                          <div className="prose prose-sm max-w-none prose-p:my-2 prose-headings:mt-4 prose-headings:mb-2 prose-headings:font-display prose-headings:text-ink prose-a:text-primary">
+                            {message.content.split("\n").map((line, i) => {
+                              const bold = line.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+                              return (
+                                <p
+                                  key={i}
+                                  className={line.startsWith("- ") ? "ml-4" : ""}
+                                  dangerouslySetInnerHTML={{ __html: bold || "&nbsp;" }}
+                                />
+                              );
+                            })}
+                            {message.streaming && (
+                              <span className="inline-flex items-center gap-1 ml-1 h-4">
+                                <span className="h-1.5 w-1.5 rounded-full bg-ink/40 animate-bounce" style={{ animationDuration: "700ms" }} />
+                                <span className="h-1.5 w-1.5 rounded-full bg-ink/40 animate-bounce" style={{ animationDelay: "140ms", animationDuration: "700ms" }} />
+                                <span className="h-1.5 w-1.5 rounded-full bg-ink/40 animate-bounce" style={{ animationDelay: "280ms", animationDuration: "700ms" }} />
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="whitespace-pre-wrap">{message.content}</p>
+                        )}
+                        {message.action && message.role === "assistant" && !message.streaming && (
+                          <ProposalCard 
+                            action={message.action}
+                            onAccept={async () => {
+                              try {
+                                const token = getAccessToken();
+                                if (message.action.action === "propose_meal_plan") {
+                                  await fetch("/api/v1/nutrition/meal-plan/save", {
+                                    method: "POST",
+                                    headers: {
+                                      "Content-Type": "application/json",
+                                      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                                    },
+                                    body: JSON.stringify({
+                                      plan_json: message.action.proposal,
+                                      created_by: "XOMNI"
+                                    }),
+                                  });
+                                } else if (message.action.action === "propose_todo") {
+                                  await fetch("/api/v1/time/todos", {
+                                    method: "POST",
+                                    headers: {
+                                      "Content-Type": "application/json",
+                                      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                                    },
+                                    body: JSON.stringify({
+                                      title: message.action.title,
+                                      due_date: new Date().toISOString().split("T")[0],
+                                      priority: message.action.priority || "normal",
+                                      created_by: "XOMNI"
+                                    }),
+                                  });
+                                }
+                                // Add a system response back to chat
+                                setMessages(prev => [...prev, {
+                                  id: `${Date.now()}-sys`,
+                                  role: "user",
+                                  content: "I have accepted this proposal.",
+                                  createdAt: new Date()
+                                }]);
+                              } catch(e) {
+                                console.error(e);
+                              }
+                            }}
+                            onReject={() => {
+                              setMessages(prev => [...prev, {
+                                id: `${Date.now()}-sys`,
+                                role: "user",
+                                content: "I reject this proposal. Let's adjust it.",
+                                createdAt: new Date()
+                              }]);
+                            }}
+                          />
+                        )}
+                      </div>
+                      {message.role === "assistant" && (
+                        <div className="flex items-center gap-2 mt-2 pl-2">
+                          <button className="text-[11px] font-medium text-muted hover:text-ink transition-colors">Copy</button>
+                          <span className="text-muted/30">•</span>
+                          <button className="text-[11px] font-medium text-muted hover:text-ink transition-colors">Retry</button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {error && (
+                  <div className="flex justify-center">
+                    <p className="text-[12px] text-critical bg-critical/10 rounded-lg px-4 py-2 font-medium">{error}</p>
+                  </div>
+                )}
+                  <div ref={bottomRef} className="h-4" />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Unified Input Box (Docked statically at bottom) */}
+          <div className="shrink-0 w-full bg-paper px-4 pb-6 pt-2 z-30">
+              <div className="max-w-3xl mx-auto relative">
+              {(voiceError || voiceState === "recording" || voiceState === "transcribing") && (
+                <div className="flex justify-center mb-3">
+                  <div className={cn(
+                    "text-[11px] rounded-full px-4 py-1.5 flex items-center gap-2 shadow-sm font-medium backdrop-blur",
+                    voiceState === "recording" ? "bg-rose-500/90 text-white animate-pulse" :
+                    voiceState === "transcribing" ? "bg-amber-100/90 text-amber-800 border border-amber-200" :
+                    "bg-critical/90 text-white"
+                  )}>
+                    {voiceState === "recording" && <><Mic className="h-3 w-3" /> Recording… tap mic to stop</>}
+                    {voiceState === "transcribing" && <><span className="h-3 w-3 animate-spin rounded-full border-2 border-amber-600 border-t-transparent" /> Transcribing…</>}
+                    {voiceError && voiceError}
+                  </div>
+                </div>
+              )}
+
+              <div className="bg-surface border border-line/60 shadow-ambient rounded-[1.25rem] p-1.5 flex items-end gap-1 sm:gap-2 relative focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/40 transition-all">
+                <button className="h-10 w-10 shrink-0 rounded-full flex items-center justify-center text-muted hover:bg-mist hover:text-ink transition-colors mb-0.5" title="Attach file">
+                  <Link2 className="h-4 w-4" />
+                </button>
+
+                <textarea
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder="Ask me anything..."
+                  className="flex-1 bg-transparent border-none shadow-none px-2 py-3 text-[14px] outline-none min-h-[44px] max-h-32 resize-none placeholder:text-muted/60"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      void send(input);
+                    }
+                  }}
+                />
+
+                <div className="flex items-center gap-1 mb-0.5 pr-1">
+                  <button
+                    onClick={() => setIsVoiceModalOpen(true)}
+                    className="h-10 w-10 shrink-0 rounded-full flex items-center justify-center bg-primary/10 text-primary hover:bg-primary/20 transition-all"
+                    title="Start LiveKit Voice Talk"
+                  >
+                    <Mic className="h-4 w-4" />
+                  </button>
+
+                  <Button
+                    onClick={() => void send(input)}
+                    disabled={!input.trim() || loading}
+                    className="h-10 w-10 shrink-0 rounded-full p-0 bg-ink hover:bg-ink/80 text-paper transition-transform active:scale-95 disabled:opacity-50"
+                  >
+                    {loading ? (
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-paper/30 border-t-paper" />
+                    ) : (
+                      <Send className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
-      )}
+      </main>
+
+      <LiveKitVoiceModal
+        isOpen={isVoiceModalOpen}
+        onClose={() => setIsVoiceModalOpen(false)}
+        conversationId={activeConvId}
+        mode={mode}
+        onMessageAdded={(msg) => {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: Math.random().toString(36).substring(7),
+              role: msg.role,
+              content: msg.content,
+              createdAt: new Date(),
+              action: msg.action,
+            },
+          ]);
+        }}
+        onConversationCreated={(id) => {
+          setActiveConvId(id);
+          void loadConversations();
+        }}
+      />
     </div>
   );
 }
+

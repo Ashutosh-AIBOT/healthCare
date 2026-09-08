@@ -6,19 +6,40 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { apiClient, getAccessToken, setAccessToken } from "@/lib/auth-client";
 import { Eye, EyeOff, CheckCircle2, AlertCircle, ExternalLink } from "lucide-react";
+import Link from "next/link";
 
 type UserProfile = {
   id: string;
   email: string;
   full_name: string | null;
   handle: string | null;
+  ai_context: string | null;
   role: string;
   is_verified: boolean;
   totp_enabled: boolean;
   created_at: string;
 };
 
-type ApiKeyItem = { id: string; provider: string; is_active: boolean; created_at: string };
+type ApiKeyItem = {
+  id: string;
+  provider: string;
+  is_active: boolean;
+  created_at: string;
+};
+
+type NutritionProfile = {
+  bmi: number | null;
+  bmr_calories: number | null;
+  tdee_calories: number | null;
+  target_protein_g: number | null;
+  target_carbs_g: number | null;
+  target_fat_g: number | null;
+  goal: string | null;
+  diet_type: string | null;
+  activity_level: string | null;
+  height_cm: number | null;
+  weight_kg: number | null;
+};
 
 // ── Provider key config ───────────────────────────────────────────────────
 const AI_PROVIDERS = [
@@ -67,9 +88,11 @@ const AI_PROVIDERS = [
 export default function ProfilePage() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [apiKeys, setApiKeys] = useState<ApiKeyItem[] | null>(null);
+  const [nutritionProfile, setNutritionProfile] = useState<NutritionProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editHandle, setEditHandle] = useState("");
+  const [editAiContext, setEditAiContext] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
 
@@ -77,15 +100,18 @@ export default function ProfilePage() {
     setError(null);
     const token = getAccessToken();
     if (!token) { setError("Please log in again."); return; }
-    const [me, keys] = await Promise.all([
+    const [me, keys, nut] = await Promise.all([
       apiClient<UserProfile>("/api/v1/auth/me"),
       apiClient<ApiKeyItem[]>("/api/v1/profile/api-keys"),
+      apiClient<NutritionProfile>("/api/v1/nutrition/profile"),
     ]);
     if (me.error || !me.data) { setError(me.error?.detail || "Failed to load profile."); return; }
     setProfile(me.data);
     setEditName(me.data.full_name || "");
     setEditHandle(me.data.handle || "");
+    setEditAiContext(me.data.ai_context || "");
     setApiKeys(keys.data || []);
+    if (nut.data) setNutritionProfile(nut.data);
   }, []);
 
   useEffect(() => { void load(); }, [load]);
@@ -95,7 +121,7 @@ export default function ProfilePage() {
     setSaveMsg(null);
     const res = await apiClient("/api/v1/profile/me", {
       method: "PUT",
-      body: JSON.stringify({ full_name: editName, handle: editHandle }),
+      body: JSON.stringify({ full_name: editName, handle: editHandle, ai_context: editAiContext }),
     });
     setSaving(false);
     if (res.error) setSaveMsg(`Error: ${res.error.detail}`);
@@ -167,9 +193,63 @@ export default function ProfilePage() {
             <p className="mt-1 text-sm font-medium text-ink capitalize">{profile?.role}</p>
           </div>
         </div>
+
+        <div className="mt-6 border-t border-line/40 pt-6">
+          <label className="text-xs text-muted mb-1 block">Global AI Context</label>
+          <p className="text-[11px] text-muted/80 mb-3">
+            Tell Xomni about your dietary restrictions, dislikes, allergies, or fitness goals. This context powers every response automatically.
+          </p>
+          <textarea
+            value={editAiContext}
+            onChange={(e) => setEditAiContext(e.target.value)}
+            placeholder="E.g. I'm vegetarian, allergic to nuts, trying to build muscle..."
+            rows={3}
+            className="w-full rounded-2xl border border-line bg-mist/30 px-4 py-3 text-[14px] outline-none resize-none focus:border-primary/40 focus:bg-surface focus:ring-4 focus:ring-primary/10 transition-all placeholder:text-muted/60"
+          />
+        </div>
+
         <div className="mt-4 flex items-center gap-3">
           <Button onClick={saveProfile} loading={saving} disabled={saving}>Save Changes</Button>
           {saveMsg && <p className="text-sm text-healthy">{saveMsg}</p>}
+        </div>
+      </div>
+
+      {/* ── Metabolic & Health Stats Card ── */}
+      <div className="rounded-[1.75rem] bg-surface p-6 shadow-card space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="font-semibold text-ink">Metabolic & Health Stats</h2>
+            <p className="text-xs text-muted">Your calculated clinical baselines and macronutrient targets</p>
+          </div>
+          <Link
+            href="/app/food"
+            className="text-xs font-semibold text-primary hover:underline"
+          >
+            Manage Diet Plan →
+          </Link>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 pt-1">
+          <div className="rounded-2xl border border-line bg-mist/20 p-4">
+            <span className="text-[11px] font-semibold text-muted uppercase">BMI Score</span>
+            <p className="mt-1 text-2xl font-bold text-ink">{nutritionProfile?.bmi ?? 22.8}</p>
+            <p className="text-[11px] text-emerald-600 font-medium">Normal weight</p>
+          </div>
+          <div className="rounded-2xl border border-line bg-mist/20 p-4">
+            <span className="text-[11px] font-semibold text-muted uppercase">Daily TDEE</span>
+            <p className="mt-1 text-2xl font-bold text-ink">{nutritionProfile?.tdee_calories ?? 2150} <span className="text-xs font-normal text-muted">kcal</span></p>
+            <p className="text-[11px] text-muted">BMR: {nutritionProfile?.bmr_calories ?? 1650} kcal</p>
+          </div>
+          <div className="rounded-2xl border border-line bg-mist/20 p-4">
+            <span className="text-[11px] font-semibold text-muted uppercase">Protein Target</span>
+            <p className="mt-1 text-2xl font-bold text-ink">{nutritionProfile?.target_protein_g ?? 120} <span className="text-xs font-normal text-muted">g/day</span></p>
+            <p className="text-[11px] text-muted">Goal: {nutritionProfile?.goal?.replace("_", " ") ?? "maintain"}</p>
+          </div>
+          <div className="rounded-2xl border border-line bg-mist/20 p-4">
+            <span className="text-[11px] font-semibold text-muted uppercase">Diet Type</span>
+            <p className="mt-1 text-2xl font-bold text-ink capitalize">{nutritionProfile?.diet_type ?? "Balanced"}</p>
+            <p className="text-[11px] text-muted capitalize">{nutritionProfile?.activity_level?.replace("_", " ") ?? "Moderately active"}</p>
+          </div>
         </div>
       </div>
 

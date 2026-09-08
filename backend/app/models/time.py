@@ -71,6 +71,7 @@ class Todo(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     due_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default=TodoStatus.PENDING)
     priority: Mapped[str] = mapped_column(String(20), nullable=False, default=TodoPriority.NORMAL)
+    created_by: Mapped[str] = mapped_column(String(20), nullable=False, default="USER")  # USER | XOMNI
     timetable_block_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("time_blocks.id", ondelete="SET NULL"), nullable=True, index=True)
 
 

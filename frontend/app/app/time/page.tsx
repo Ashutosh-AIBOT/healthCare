@@ -29,6 +29,7 @@ type Todo = {
   due_date: string;
   status: "pending" | "done";
   priority: "normal" | "important" | "less";
+  created_by?: string;
   timetable_block_id?: string | null;
 };
 type HolidayRule = { id: string; rule_type: "weekly" | "specific"; weekday: number | null; specific_date: string | null };
@@ -89,6 +90,9 @@ export default function TimeManagementPage() {
   const [checkinMatched, setCheckinMatched] = useState(true);
   const [telegramChatId, setTelegramChatId] = useState<string>("");
   const [telegramStatus, setTelegramStatus] = useState<string>("");
+  const [newTodoTitle, setNewTodoTitle] = useState("");
+  const [newTodoPriority, setNewTodoPriority] = useState<"normal" | "important" | "less">("normal");
+  const [addingTodo, setAddingTodo] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -148,6 +152,33 @@ export default function TimeManagementPage() {
     setShowCheckin(false);
     setCheckinBlock(null);
     setCheckinTitle("");
+    void load();
+  };
+
+  const handleToggleTodo = async (todo: Todo) => {
+    const nextStatus = todo.status === "done" ? "pending" : "done";
+    await apiClient(`/api/v1/time/todos/${todo.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: nextStatus }),
+    });
+    void load();
+  };
+
+  const handleAddTodo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTodoTitle.trim()) return;
+    setAddingTodo(true);
+    await apiClient("/api/v1/time/todos", {
+      method: "POST",
+      body: JSON.stringify({
+        title: newTodoTitle.trim(),
+        due_date: selectedDate,
+        priority: newTodoPriority,
+        created_by: "USER",
+      }),
+    });
+    setAddingTodo(false);
+    setNewTodoTitle("");
     void load();
   };
 
@@ -260,6 +291,59 @@ export default function TimeManagementPage() {
             <div className="mt-3 h-2 overflow-hidden rounded-full bg-mist">
               <div className="h-full rounded-full bg-primary transition-all" style={{ width: `var(--todo-w, ${Math.min(100, stats?.todo_pct ?? 0)}%)` } as React.CSSProperties} />
             </div>
+            
+            {todos.length > 0 && (
+              <div className="mt-4 space-y-2 border-t border-line/50 pt-4">
+                {todos.map(t => (
+                  <div
+                    key={t.id}
+                    onClick={() => handleToggleTodo(t)}
+                    className="flex items-center justify-between gap-2 p-1.5 rounded-lg hover:bg-mist/50 cursor-pointer transition"
+                  >
+                    <p className={`text-sm ${t.status === 'done' ? 'line-through text-muted' : 'text-ink'}`}>{t.title}</p>
+                    <div className="flex items-center gap-1.5">
+                      <span
+                        className={`text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wider ${
+                          t.created_by === 'XOMNI'
+                            ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                            : 'bg-blue-50 text-blue-700 border border-blue-200'
+                        }`}
+                      >
+                        {t.created_by === 'XOMNI' ? 'AI Suggested' : 'Manual'}
+                      </span>
+                      {t.status === 'done' ? <CheckCircle2 className="h-4 w-4 text-primary" /> : <Circle className="h-4 w-4 text-muted" />}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Inline Add Todo Form */}
+            <form onSubmit={handleAddTodo} className="mt-4 flex items-center gap-2 border-t border-line/50 pt-3">
+              <input
+                type="text"
+                placeholder="+ Add task for today..."
+                value={newTodoTitle}
+                onChange={(e) => setNewTodoTitle(e.target.value)}
+                className="flex-1 bg-mist/30 rounded-lg px-2.5 py-1.5 text-xs text-ink placeholder:text-muted outline-none border border-line/60 focus:border-primary"
+              />
+              <select
+                value={newTodoPriority}
+                onChange={(e) => setNewTodoPriority(e.target.value as any)}
+                className="bg-mist/30 text-[11px] rounded-lg px-2 py-1.5 border border-line/60 text-ink outline-none"
+              >
+                <option value="important">High</option>
+                <option value="normal">Normal</option>
+                <option value="less">Low</option>
+              </select>
+              <button
+                type="submit"
+                disabled={addingTodo || !newTodoTitle.trim()}
+                className="bg-primary hover:bg-primary-hover text-primary-foreground text-xs font-semibold px-3 py-1.5 rounded-lg transition disabled:opacity-50"
+              >
+                {addingTodo ? "..." : "Add"}
+              </button>
+            </form>
           </div>
           <div className="rounded-2xl border border-line bg-surface/80 p-5">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted">Timetable adherence</p>

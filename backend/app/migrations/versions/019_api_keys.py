@@ -30,8 +30,6 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.UniqueConstraint("user_id", "provider", name="uq_user_provider"),
     )
-    op.create_index("ix_api_keys_user_id", "api_keys", ["user_id"])
-    op.create_index("ix_api_keys_provider", "api_keys", ["provider"])
 
 
 def downgrade() -> None:

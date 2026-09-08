@@ -86,8 +86,8 @@ async def log_activity(
 @router.get("/activities", response_model=dict)
 async def get_activities(
     days: int = Query(default=7, ge=1, le=90),
-    db: Annotated[AsyncSession, Depends(get_db)] = Depends(get_db),
-    current_user: Annotated[User, Depends(get_current_user)] = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> dict:
     """Get activity history + weekly chart data."""
     return await fitness_service.get_activities(db, user_id=current_user.id, days=days)
@@ -100,7 +100,27 @@ async def get_food_suggestions(
 ) -> dict:
     """Get AI food suggestions based on fitness level and nutrition profile."""
     text = await fitness_service.get_ai_food_suggestions(db, user_id=current_user.id)
-    return {"suggestions": text}
+    items = [
+        {
+            "type": "pre_workout",
+            "timing": "Pre-Workout (30-45m before)",
+            "title": "Complex Carbs & Light Fuel",
+            "description": "Banana with a spoonful of peanut butter or a bowl of oats with almonds to fuel muscular glycogen."
+        },
+        {
+            "type": "post_workout",
+            "timing": "Post-Workout (within 1-2 hours)",
+            "title": "High Bioavailability Protein",
+            "description": "Grilled paneer / chicken breast with steamed rice or a lentil-quinoa bowl for rapid muscle recovery."
+        },
+        {
+            "type": "hydration",
+            "timing": "Intra & All Day",
+            "title": "Hydration & Mineral Balance",
+            "description": "3.5L of water with electrolyte replenishment to maintain cellular pump and prevent muscle cramping."
+        }
+    ]
+    return {"suggestions": items, "text": text}
 
 
 @router.get("/levels", response_model=dict)

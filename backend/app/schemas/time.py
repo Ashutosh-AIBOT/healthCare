@@ -49,6 +49,7 @@ class TodoIn(BaseModel):
     description: str | None = None
     due_date: date
     priority: str = Field(default="normal", pattern="^(normal|important|less)$")
+    created_by: str = Field(default="USER")
     timetable_block_id: uuid.UUID | None = None
 
 
@@ -68,6 +69,7 @@ class TodoOut(BaseModel):
     due_date: date
     status: str
     priority: str
+    created_by: str
     timetable_block_id: uuid.UUID | None
 
     model_config = {"from_attributes": True}

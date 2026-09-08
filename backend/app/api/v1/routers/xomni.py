@@ -68,16 +68,17 @@ class TimetableActionRequest(BaseModel):
 
 class LiveKitTokenRequest(BaseModel):
     room_name: str | None = None   # auto-generated if omitted
+    conversation_id: str | None = None
 
 
 # ─────────────────────────── Chat (NVIDIA + Groq streaming) ─────────────────
 
 
-@router.post("/chat")
+@router.post("/chat", response_model=None)
 async def chat(
     payload: ChatRequest,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> StreamingResponse | ChatResponse:
     """
     Xomni chat.
@@ -100,7 +101,7 @@ async def chat(
         message=payload.message,
         mode=payload.mode,
         conversation_id=conv_id,
-        user_prompt_prefix=payload.user_prompt_prefix,
+        user_prompt_prefix=payload.user_prompt_prefix or current_user.ai_context,
         nutrition_context=payload.nutrition_context,
     )
 
@@ -244,7 +245,7 @@ async def livekit_token(
 
     Requires: LIVEKIT_API_KEY + LIVEKIT_API_SECRET in environment.
     """
-    room = payload.room_name or f"xomni-{current_user.id}-{uuid.uuid4().hex[:8]}"
+    room = payload.room_name or f"xomni-{current_user.id}-{payload.conversation_id or uuid.uuid4().hex[:8]}"
     identity = str(current_user.id)
     name = current_user.full_name or current_user.email
 
@@ -360,8 +361,8 @@ async def today_points(
 @router.get("/points/history", response_model=list)
 async def points_history(
     days: int = Query(default=7, ge=1, le=30),
-    db: Annotated[AsyncSession, Depends(get_db)] = Depends(get_db),
-    current_user: Annotated[User, Depends(get_current_user)] = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> list:
     """Points history for past N days (max 30)."""
     return await points_service.get_points_history(db, user_id=current_user.id, days=days)

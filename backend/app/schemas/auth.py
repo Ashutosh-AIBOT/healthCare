@@ -80,6 +80,22 @@ class UpdatePasswordRequest(BaseModel):
         return v
 
 
+class ProfileUpdate(BaseModel):
+    full_name: str | None = None
+    handle: str | None = Field(default=None, min_length=3, max_length=30)
+    ai_context: str | None = None
+
+    @field_validator("handle")
+    @classmethod
+    def validate_handle(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        handle = v.lower().strip()
+        if not HANDLE_RE.match(handle):
+            raise ValueError("Handle must be 3–30 chars, start with a letter, and use a-z, 0-9, _ only.")
+        return handle
+
+
 class UserOut(BaseModel):
     id: uuid.UUID
     email: EmailStr
@@ -87,6 +103,7 @@ class UserOut(BaseModel):
     role: str
     full_name: str | None
     family_id: uuid.UUID | None
+    ai_context: str | None
     is_verified: bool
     totp_enabled: bool
     created_at: datetime

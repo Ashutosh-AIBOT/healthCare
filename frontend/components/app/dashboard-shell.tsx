@@ -61,6 +61,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     );
   }
 
+  const isXomni = pathname === "/app/xomni";
+
   return (
     <div className="min-h-dvh bg-paper">
       <SidebarNav
@@ -69,11 +71,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         pathname={pathname}
         onLogout={logout}
       />
-      <div className={cn("min-h-dvh", "lg:ml-64")}>
-        <TopBar onToggleSidebar={() => setSidebarOpen(true)} />
-        <main className={cn("min-h-dvh", "px-4 py-6 md:px-6 md:py-8")}>
-          <div className={cn("mx-auto", "max-w-7xl")}>{children}</div>
-        </main>
+      <div className={cn("flex flex-col min-h-dvh", "lg:ml-64")}>
+        {!isXomni && <TopBar onToggleSidebar={() => setSidebarOpen(true)} />}
+        {isXomni ? (
+          <main className="flex-1 min-h-0 flex flex-col bg-paper">
+            {children}
+          </main>
+        ) : (
+          <main className={cn("flex-1", "px-4 py-6 md:px-6 md:py-8")}>
+            <div className={cn("mx-auto", "max-w-7xl")}>{children}</div>
+          </main>
+        )}
       </div>
     </div>
   );

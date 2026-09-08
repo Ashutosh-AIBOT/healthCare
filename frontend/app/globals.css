@@ -3,110 +3,74 @@
 @tailwind utilities;
 
 /*
-  Aarogya — Design tokens (oklch)
-  Single source of truth for light and dark themes.
-  All colors are oklch for perceptual uniformity + P3-ready.
+  Aarogya — Design System
+  Single source of truth for light and dark themes based on semantic accents.
 */
 
 :root {
   color-scheme: light;
 
-  /* canvas / surfaces — widened steps so cards pop */
-  --color-paper: oklch(0.92 0.01 210);
-  --color-surface: oklch(0.99 0.003 210);
-  --color-sunken: oklch(0.88 0.012 210);
-  --color-foam: oklch(0.96 0.005 210);
-  --color-mist: oklch(0.91 0.01 210);
+  /* Neutral Ramp */
+  --color-bg: #FAF7F1;
+  --color-surface: #FFFFFF;
+  --color-surface-hover: #EBEDF0;
+  --color-border: #E7E1D6;
+  --color-text-primary: #22262B;
+  --color-text-secondary: #6B7280;
 
-  /* ink / muted / line — muted darkened for AA on text-xs */
-  --color-ink: oklch(0.18 0.015 200);
-  --color-muted: oklch(0.44 0.018 200);
-  --color-line: oklch(0.86 0.012 200);
+  /* Semantic Accents */
+  --color-accent-gold: #C9862B;
+  --color-accent-teal: #2C8F87;
+  --color-accent-water: #3E7FBF;
+  --color-success: #3F9C5F;
+  --color-danger: #C24E3F;
 
-  /* primary indigo — restrained accent */
-  --color-primary: oklch(0.45 0.09 250);
-  --color-primary-foreground: oklch(0.99 0.003 80);
-  --color-primary-soft: oklch(0.93 0.03 250);
-
-  /* accents — use sparingly, in-gamut */
-  --color-apricot: oklch(0.72 0.14 55);
-  --color-lime: oklch(0.86 0.19 130);
-  --color-lime-ink: oklch(0.2 0.02 200);
-  --color-blush: oklch(0.88 0.04 20);
-  --color-charcoal: oklch(0.18 0.01 200);
-  --color-charcoal-foreground: oklch(0.96 0.005 80);
-
-  /* health scale */
-  --color-healthy-excellent: oklch(0.62 0.13 165);
-  --color-healthy-good: oklch(0.72 0.12 130);
-  --color-healthy: var(--color-healthy-excellent);
-  --color-watch: oklch(0.78 0.13 80);
-  --color-critical: oklch(0.62 0.16 35);
-
-  /* role tints */
-  --color-doctor: oklch(0.5 0.11 250);
-  --color-agency: oklch(0.55 0.1 300);
-
-  /* typography — fallbacks mirror next/font stacks in app/layout.tsx */
-  --font-display: "Bricolage Grotesque", Georgia, serif;
-  --font-sans: "Public Sans", system-ui, sans-serif;
+  /* typography */
+  --font-display: "Newsreader", "Fraunces", Georgia, serif;
+  --font-sans: "Inter", "General Sans", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
   /* radii */
-  --radius-sm: 12px;
-  --radius-md: 18px;
-  --radius-lg: 24px;
-  --radius-xl: 28px;
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
   --radius-full: 999px;
 
   /* shadows */
-  --shadow-ambient: 0 24px 60px -28px oklch(0.18 0.015 200 / 0.28);
-  --shadow-lift: 0 8px 24px -10px oklch(0.18 0.015 200 / 0.22);
-  --shadow-hairline: 0 0 0 1px var(--color-line);
-  --shadow-card: 0 12px 40px -16px oklch(0.18 0.015 200 / 0.28), 0 2px 6px -2px oklch(0.18 0.015 200 / 0.12);
+  --shadow-ambient: 0 8px 24px rgba(0,0,0,0.08);
+  --shadow-lift: 0 8px 24px rgba(0,0,0,0.12);
+  --shadow-hairline: 0 0 0 1px var(--color-border);
+  --shadow-card: 0 12px 40px -16px rgba(0,0,0,0.05), 0 2px 6px -2px rgba(0,0,0,0.02);
 
   /* grain */
   --grain: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");
 }
 
-/* Dark — widened steps, no paper==foam */
+/* Dark Mode */
 .dark,
 [data-theme="dark"] {
   color-scheme: dark;
 
-  --color-paper: oklch(0.14 0.012 210);
-  --color-surface: oklch(0.21 0.014 210);
-  --color-sunken: oklch(0.17 0.012 210);
-  --color-foam: oklch(0.16 0.012 210);
-  --color-mist: oklch(0.26 0.02 210);
+  /* Neutral Ramp */
+  --color-bg: #0E1116;
+  --color-surface: #171B22;
+  --color-surface-hover: #1F242D;
+  --color-border: #262B34;
+  --color-text-primary: #EDEFF2;
+  --color-text-secondary: #8D96A3;
 
-  --color-ink: oklch(0.96 0.005 80);
-  --color-muted: oklch(0.66 0.02 210);
-  --color-line: oklch(0.28 0.02 210);
+  /* Semantic Accents */
+  --color-accent-gold: #E8A93A;
+  --color-accent-teal: #3FA8A0;
+  --color-accent-water: #5B9BD9;
+  --color-success: #6FCF97;
+  --color-danger: #E2685A;
 
-  --color-primary: oklch(0.72 0.1 250);
-  --color-primary-foreground: oklch(0.16 0.012 210);
-  --color-primary-soft: oklch(0.28 0.04 250);
-
-  --color-apricot: oklch(0.75 0.12 55);
-  --color-lime: oklch(0.82 0.18 128);
-  --color-lime-ink: oklch(0.16 0.012 210);
-  --color-blush: oklch(0.34 0.05 20);
-  --color-charcoal: oklch(0.24 0.01 200);
-  --color-charcoal-foreground: oklch(0.96 0.005 80);
-
-  --color-healthy-excellent: oklch(0.7 0.12 165);
-  --color-healthy-good: oklch(0.76 0.1 130);
-  --color-watch: oklch(0.8 0.12 80);
-  --color-critical: oklch(0.68 0.15 35);
-
-  --color-doctor: oklch(0.62 0.11 250);
-  --color-agency: oklch(0.64 0.1 300);
-
-  --shadow-ambient: 0 24px 60px -28px oklch(0 0 0 / 0.55);
-  --shadow-lift: 0 8px 24px -10px oklch(0 0 0 / 0.5);
-  --shadow-hairline: 0 0 0 1px oklch(0.28 0.02 210);
-  --shadow-card: 0 12px 40px -16px oklch(0 0 0 / 0.6), 0 2px 6px -2px oklch(0 0 0 / 0.3);
+  /* No generic shadows on dark mode per rules, rely on 1px borders */
+  --shadow-ambient: none;
+  --shadow-lift: 0 8px 24px rgba(0,0,0,0.35); /* Only for floating/overlays per rules */
+  --shadow-hairline: 0 0 0 1px var(--color-border);
+  --shadow-card: none;
 }
 
 .dark img,

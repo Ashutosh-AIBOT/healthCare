@@ -185,62 +185,74 @@ export default function FitnessPage() {
           label="Active Days This Week"
           value={`${activeDays} / 7`}
           trend={`${profile?.weekly_workout_days || 4} days target`}
-          color="lime"
+          color="teal"
+          icon={<Calendar className="h-[18px] w-[18px]" />}
+          progress={Math.round((activeDays / 7) * 100)}
         />
         <StatCard
           label="Active Minutes"
           value={`${totalMin} min`}
           trend="Total logged this week"
-          color="primary"
+          color="blue"
+          icon={<Activity className="h-[18px] w-[18px]" />}
         />
         <StatCard
           label="Calories Burned"
           value={`${totalCal} kcal`}
           trend={`${workoutCount} workouts recorded`}
-          color="blush"
+          color="coral"
+          icon={<Flame className="h-[18px] w-[18px]" />}
         />
         <StatCard
           label="Rest Days"
           value={`${7 - activeDays}`}
           trend={`${profile?.rest_days || 3} recommended`}
-          color="charcoal"
+          color="gold"
+          icon={<Heart className="h-[18px] w-[18px]" />}
         />
       </div>
 
       {/* Dynamic 7-Day Activity Chart */}
-      <div className="rounded-[1.75rem] border border-line bg-surface p-6 shadow-card space-y-4">
-        <div className="flex items-center justify-between">
+      <div className="rounded-[1.75rem] border border-border bg-surface p-6 shadow-card space-y-4 relative overflow-hidden">
+        <div className="flex items-center justify-between relative z-10">
           <div>
-            <h2 className="font-semibold text-ink text-lg">Weekly Activity Timeline</h2>
-            <p className="text-xs text-muted">Real active minutes logged per day</p>
+            <h2 className="font-semibold text-text-primary text-lg">Weekly Activity Timeline</h2>
+            <p className="text-xs text-text-secondary">Real active minutes logged per day</p>
           </div>
-          <span className="text-xs font-semibold text-primary bg-primary-soft px-3 py-1 rounded-full">
+          <span className="text-xs font-semibold text-accent-teal bg-accent-teal/15 px-3 py-1 rounded-full">
             {totalMin} min total
           </span>
         </div>
 
         <div
-          className="mt-6 flex h-44 items-end gap-3 sm:gap-4 pt-4 border-b border-line/40 pb-2"
+          className="mt-6 flex h-44 items-end gap-3 sm:gap-6 pt-6 border-b border-border pb-2 relative z-10"
           role="img"
           aria-label="Bar chart of active minutes per day this week"
         >
+          {/* Subtle horizontal grid lines */}
+          <div className="absolute inset-x-0 bottom-2 top-6 flex flex-col justify-between pointer-events-none">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="w-full border-t border-border border-dashed" />
+            ))}
+          </div>
+
           {chart.map((d) => {
             const heightPct = Math.max(8, Math.round((d.minutes / maxMin) * 100));
             const hasActivity = d.minutes > 0;
             return (
-              <div key={d.day} className="flex h-full flex-1 flex-col items-center justify-end gap-2 group">
-                <span className="text-[10px] text-muted opacity-0 group-hover:opacity-100 transition">
+              <div key={d.day} className="relative z-10 flex h-full flex-1 flex-col items-center justify-end gap-2 group">
+                <span className="text-[10px] font-medium text-text-primary opacity-0 group-hover:opacity-100 transition-opacity bg-surface-hover px-2 py-0.5 rounded shadow-sm">
                   {d.minutes}m
                 </span>
                 <div
-                  className={`w-full rounded-xl transition-all duration-300 ${
+                  className={`w-full max-w-[2.5rem] rounded-xl transition-all duration-300 ${
                     hasActivity
-                      ? "bg-gradient-to-t from-primary to-primary-hover shadow-sm"
-                      : "bg-mist/80"
+                      ? "bg-accent-teal shadow-sm hover:bg-accent-teal/90"
+                      : "bg-surface-hover/80"
                   }`}
                   style={{ height: `${heightPct}%` }}
                 />
-                <span className="text-[11px] font-semibold text-muted">{d.day}</span>
+                <span className="text-[11px] font-semibold text-text-secondary">{d.day}</span>
               </div>
             );
           })}
@@ -293,8 +305,8 @@ export default function FitnessPage() {
                 onClick={() => handleUpdateLevel(item.level)}
                 className={`text-left rounded-2xl border p-5 transition-all space-y-2 ${
                   isSelected
-                    ? "border-primary bg-primary-soft/30 shadow-lift"
-                    : "border-line bg-surface hover:bg-mist/40"
+                    ? "border-accent-gold bg-surface shadow-card ring-1 ring-accent-gold"
+                    : "border-border bg-surface hover:bg-surface-hover"
                 }`}
               >
                 <div className="flex items-center justify-between">

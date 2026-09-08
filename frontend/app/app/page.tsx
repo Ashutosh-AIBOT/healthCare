@@ -153,25 +153,33 @@ export default function AppHomePage() {
           label="Calories Consumed"
           value={`${nutrition?.calories ?? 1640} / ${nutrition?.target_calories ?? 2150}`}
           trend={`${caloriePct}% of daily budget`}
-          color="primary"
+          color="teal"
+          icon={<Flame className="h-[18px] w-[18px]" />}
+          progress={caloriePct}
         />
         <StatCard
           label="Daily Adherence Score"
           value={`${timeStats?.score ?? 88} / 100`}
           trend={`${timeStats?.block_done ?? 3}/${timeStats?.block_total ?? 5} blocks on track`}
-          color="lime"
+          color="gold"
+          icon={<Target className="h-[18px] w-[18px]" />}
+          progress={timeStats?.score ?? 88}
         />
         <StatCard
           label="Today's Habits & Todos"
           value={`${timeStats?.todo_done ?? 4} / ${timeStats?.todo_total ?? 6}`}
           trend={`${todoPct}% completed`}
-          color="blush"
+          color="coral"
+          icon={<CheckCircle2 className="h-[18px] w-[18px]" />}
+          progress={todoPct}
         />
         <StatCard
           label="Water Intake"
           value={`${nutrition?.water_ml ?? 2400} ml`}
           trend={`${Math.round(((nutrition?.water_ml ?? 2400) / (nutrition?.water_target_ml ?? 3000)) * 100)}% of goal`}
-          color="charcoal"
+          color="blue"
+          icon={<Droplets className="h-[18px] w-[18px]" />}
+          progress={Math.round(((nutrition?.water_ml ?? 2400) / (nutrition?.water_target_ml ?? 3000)) * 100) || 80}
         />
       </div>
 

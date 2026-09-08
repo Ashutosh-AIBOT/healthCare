@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import {
   Plus, Send, ChevronRight, Menu, Mic, MicOff, Settings2,
   Utensils, Clock, Activity, FileText, Sparkles, X, Volume2, Search,
-  MoreHorizontal, Link2, Download, History, BrainCircuit, ActivitySquare
+  MoreHorizontal, Link2, Download, History, BrainCircuit, ActivitySquare, TriangleAlert
 } from "lucide-react";
 import { apiClient, getAccessToken, setAccessToken } from "@/lib/auth-client";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -45,11 +45,11 @@ type Me = {
 type ChatMode = "general" | "food" | "timetable" | "reports" | "fitness";
 
 const MODE_META: Record<ChatMode, { label: string; icon: React.ReactNode; color: string; prompt: string }> = {
-  general: { label: "General", icon: <Sparkles className="h-4 w-4" />, color: "text-primary", prompt: "Ask me anything..." },
-  food: { label: "Food", icon: <Utensils className="h-4 w-4" />, color: "text-emerald-600", prompt: "Ask about food & nutrition..." },
-  timetable: { label: "Timetable", icon: <Clock className="h-4 w-4" />, color: "text-amber-600", prompt: "Plan your day..." },
-  fitness: { label: "Fitness", icon: <Activity className="h-4 w-4" />, color: "text-blue-600", prompt: "Ask about workouts..." },
-  reports: { label: "Reports", icon: <FileText className="h-4 w-4" />, color: "text-violet-600", prompt: "Ask about lab reports..." },
+  general: { label: "General", icon: <Sparkles className="h-4 w-4" />, color: "text-text-primary", prompt: "Ask me anything..." },
+  food: { label: "Food", icon: <Utensils className="h-4 w-4" />, color: "text-accent-teal", prompt: "Ask about food & nutrition..." },
+  timetable: { label: "Timetable", icon: <Clock className="h-4 w-4" />, color: "text-accent-gold", prompt: "Plan your day..." },
+  fitness: { label: "Fitness", icon: <Activity className="h-4 w-4" />, color: "text-accent-water", prompt: "Ask about workouts..." },
+  reports: { label: "Reports", icon: <FileText className="h-4 w-4" />, color: "text-danger", prompt: "Ask about lab reports..." },
 };
 
 const QUICK_PROMPTS: Record<ChatMode, Array<{ title: string, desc: string }>> = {
@@ -510,13 +510,13 @@ export default function XomniPage() {
             <div className="relative">
               <button
                 onClick={() => setModeDropdown(!modeDropdown)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-mist transition-colors text-[13px] font-medium text-ink"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-surface-hover transition-colors text-[13px] font-medium text-text-primary"
               >
-                <div className={cn("h-4 w-4 rounded-full flex items-center justify-center", MODE_META[mode].color, "bg-mist")}>
+                <div className={cn("h-4 w-4 rounded-full flex items-center justify-center", MODE_META[mode].color, "bg-surface-hover")}>
                   {MODE_META[mode].icon}
                 </div>
                 Xomni {MODE_META[mode].label}
-                <ChevronRight className={cn("h-3 w-3 text-muted transition-transform", modeDropdown && "rotate-90")} />
+                <ChevronRight className={cn("h-3 w-3 text-text-secondary transition-transform", modeDropdown && "rotate-90")} />
               </button>
 
               {modeDropdown && (
@@ -594,7 +594,7 @@ export default function XomniPage() {
                       )}
                     >
                       {message.role === "assistant" && (
-                        <div className="h-8 w-8 shrink-0 rounded-full bg-gradient-to-br from-primary to-violet-600 flex items-center justify-center shadow-sm">
+                        <div className="h-8 w-8 shrink-0 rounded-full bg-gradient-to-br from-accent-teal to-accent-water flex items-center justify-center shadow-card ring-1 ring-border">
                           <Sparkles className="h-4 w-4 text-white" />
                         </div>
                       )}
@@ -702,8 +702,14 @@ export default function XomniPage() {
                     </div>
                   ))}
                   {error && (
-                    <div className="flex justify-center">
-                      <p className="text-[12px] text-critical bg-critical/10 rounded-lg px-4 py-2 font-medium">{error}</p>
+                    <div className="flex items-center justify-between rounded-xl border border-danger/30 bg-danger/5 p-4 mx-4">
+                      <div className="flex items-center gap-3">
+                        <TriangleAlert className="h-5 w-5 text-danger" />
+                        <p className="text-[13px] font-medium text-danger">{error}</p>
+                      </div>
+                      <button onClick={() => setError(null)} className="rounded-lg px-3 py-1.5 text-[13px] font-medium text-danger hover:bg-danger/10 transition-colors">
+                        Dismiss
+                      </button>
                     </div>
                   )}
                   <div ref={bottomRef} className="h-4" />
@@ -731,7 +737,7 @@ export default function XomniPage() {
               )}
 
               <div className={cn(
-                "bg-surface border border-line/60 shadow-ambient rounded-[1.25rem] p-1.5 flex items-end gap-1 sm:gap-2 relative focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/40 transition-all",
+                "bg-surface border border-border shadow-sm rounded-[1.25rem] p-1.5 flex items-end gap-1 sm:gap-2 relative focus-within:ring-2 focus-within:ring-primary focus-within:border-primary transition-all",
                 voiceState === "recording" && "ring-2 ring-rose-500/30 border-rose-500/50 shadow-[0_0_20px_rgba(244,63,94,0.15)]"
               )}>
                 <button className="h-10 w-10 shrink-0 rounded-full flex items-center justify-center text-muted hover:bg-mist hover:text-ink transition-colors mb-0.5" title="Attach file">

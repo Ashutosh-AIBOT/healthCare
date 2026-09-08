@@ -211,43 +211,43 @@ export default function FoodPage() {
       {/* Dual Reference Intelligence Cards */}
       <div className="grid gap-4 md:grid-cols-2">
         {/* Card A: What You Want / Crave */}
-        <div className="rounded-[1.75rem] border border-amber-200/60 bg-gradient-to-br from-amber-50/50 to-orange-50/30 p-6 shadow-card space-y-3">
+        <div className="rounded-[1.75rem] border border-border bg-surface p-6 shadow-card space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-100 text-amber-800">
-                <Heart className="h-4 w-4 fill-amber-500 text-amber-500" />
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-danger/15 text-danger">
+                <Heart className="h-4 w-4" />
               </div>
-              <h3 className="font-semibold text-amber-950 text-base">What You Like & Crave</h3>
+              <h3 className="font-semibold text-text-primary text-base">What You Like & Crave</h3>
             </div>
-            <span className="text-[10px] font-semibold uppercase tracking-wider bg-amber-100/80 text-amber-900 px-2.5 py-0.5 rounded-full">
+            <span className="text-[10px] font-semibold uppercase tracking-wider bg-surface-hover text-text-secondary px-2.5 py-0.5 rounded-full">
               Taste Profile
             </span>
           </div>
-          <p className="text-xs text-amber-900/80 leading-relaxed">
+          <p className="text-xs text-text-secondary leading-relaxed">
             {mealPlan?.preferences?.craving || "Sourdough toast, aromatic Indian spices, paneer, and rich cold brews."}
           </p>
-          <div className="pt-2 text-[11px] text-amber-800/70 italic border-t border-amber-200/50 flex items-center gap-1">
+          <div className="pt-2 text-[11px] text-text-secondary italic border-t border-border flex items-center gap-1">
             <span>✨ Xomni incorporates these cravings into satisfying, calibrated healthy recipes.</span>
           </div>
         </div>
 
         {/* Card B: What Your Health Needs / Should Eat */}
-        <div className="rounded-[1.75rem] border border-emerald-200/60 bg-gradient-to-br from-emerald-50/50 to-teal-50/30 p-6 shadow-card space-y-3">
+        <div className="rounded-[1.75rem] border border-border bg-surface p-6 shadow-card space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-100 text-emerald-800">
-                <Utensils className="h-4 w-4 text-emerald-600" />
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-teal/15 text-accent-teal">
+                <Utensils className="h-4 w-4" />
               </div>
-              <h3 className="font-semibold text-emerald-950 text-base">What Your Health Truly Needs</h3>
+              <h3 className="font-semibold text-text-primary text-base">What Your Health Truly Needs</h3>
             </div>
-            <span className="text-[10px] font-semibold uppercase tracking-wider bg-emerald-100/80 text-emerald-900 px-2.5 py-0.5 rounded-full">
+            <span className="text-[10px] font-semibold uppercase tracking-wider bg-surface-hover text-text-secondary px-2.5 py-0.5 rounded-full">
               Clinical Target
             </span>
           </div>
-          <p className="text-xs text-emerald-900/80 leading-relaxed">
+          <p className="text-xs text-text-secondary leading-relaxed">
             {mealPlan?.preferences?.recommended || "High-fiber complex carbs, anti-inflammatory herbs, omega-3 fatty acids, and 120g lean daily protein."}
           </p>
-          <div className="pt-2 text-[11px] text-emerald-800/70 italic border-t border-emerald-200/50 flex items-center gap-1">
+          <div className="pt-2 text-[11px] text-text-secondary italic border-t border-border flex items-center gap-1">
             <span>🛡️ Calibrated to keep your insulin sensitivity high and metabolic recovery on track.</span>
           </div>
         </div>
@@ -256,50 +256,50 @@ export default function FoodPage() {
       {/* Macro Targets with Progress Bars */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {/* Calories */}
-        <div className="rounded-2xl border border-line bg-surface p-5 shadow-sm space-y-2">
+        <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm space-y-2">
           <div className="flex justify-between items-center">
-            <span className="text-xs font-semibold text-muted uppercase tracking-wider">Calories</span>
-            <span className="text-xs font-semibold text-primary">{calPct}%</span>
+            <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Calories</span>
+            <span className="text-xs font-semibold text-accent-water">{calPct}%</span>
           </div>
-          <p className="text-2xl font-bold text-ink">{curCal} <span className="text-xs font-normal text-muted">/ {targetCal} kcal</span></p>
-          <div className="h-2 rounded-full bg-mist overflow-hidden">
-            <div className="h-full rounded-full bg-primary transition-all duration-300" style={{ width: `${calPct}%` }} />
+          <p className="text-2xl font-bold text-text-primary">{curCal} <span className="text-xs font-normal text-text-secondary">/ {targetCal} kcal</span></p>
+          <div className="h-2 rounded-full bg-surface-hover overflow-hidden">
+            <div className="h-full rounded-full bg-accent-water transition-all duration-300" style={{ width: `${calPct}%` }} />
           </div>
         </div>
 
         {/* Protein */}
-        <div className="rounded-2xl border border-line bg-surface p-5 shadow-sm space-y-2">
+        <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm space-y-2">
           <div className="flex justify-between items-center">
-            <span className="text-xs font-semibold text-muted uppercase tracking-wider">Protein</span>
-            <span className="text-xs font-semibold text-emerald-600">{proPct}%</span>
+            <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Protein</span>
+            <span className="text-xs font-semibold text-accent-teal">{proPct}%</span>
           </div>
-          <p className="text-2xl font-bold text-ink">{curPro}g <span className="text-xs font-normal text-muted">/ {targetPro}g</span></p>
-          <div className="h-2 rounded-full bg-mist overflow-hidden">
-            <div className="h-full rounded-full bg-emerald-500 transition-all duration-300" style={{ width: `${proPct}%` }} />
+          <p className="text-2xl font-bold text-text-primary">{curPro}g <span className="text-xs font-normal text-text-secondary">/ {targetPro}g</span></p>
+          <div className="h-2 rounded-full bg-surface-hover overflow-hidden">
+            <div className="h-full rounded-full bg-accent-teal transition-all duration-300" style={{ width: `${proPct}%` }} />
           </div>
         </div>
 
         {/* Carbs */}
-        <div className="rounded-2xl border border-line bg-surface p-5 shadow-sm space-y-2">
+        <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm space-y-2">
           <div className="flex justify-between items-center">
-            <span className="text-xs font-semibold text-muted uppercase tracking-wider">Carbs</span>
-            <span className="text-xs font-semibold text-amber-600">{carbPct}%</span>
+            <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Carbs</span>
+            <span className="text-xs font-semibold text-accent-gold">{carbPct}%</span>
           </div>
-          <p className="text-2xl font-bold text-ink">{curCarb}g <span className="text-xs font-normal text-muted">/ {targetCarb}g</span></p>
-          <div className="h-2 rounded-full bg-mist overflow-hidden">
-            <div className="h-full rounded-full bg-amber-500 transition-all duration-300" style={{ width: `${carbPct}%` }} />
+          <p className="text-2xl font-bold text-text-primary">{curCarb}g <span className="text-xs font-normal text-text-secondary">/ {targetCarb}g</span></p>
+          <div className="h-2 rounded-full bg-surface-hover overflow-hidden">
+            <div className="h-full rounded-full bg-accent-gold transition-all duration-300" style={{ width: `${carbPct}%` }} />
           </div>
         </div>
 
         {/* Fats */}
-        <div className="rounded-2xl border border-line bg-surface p-5 shadow-sm space-y-2">
+        <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm space-y-2">
           <div className="flex justify-between items-center">
-            <span className="text-xs font-semibold text-muted uppercase tracking-wider">Healthy Fats</span>
-            <span className="text-xs font-semibold text-indigo-600">{fatPct}%</span>
+            <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Healthy Fats</span>
+            <span className="text-xs font-semibold text-danger">{fatPct}%</span>
           </div>
-          <p className="text-2xl font-bold text-ink">{curFat}g <span className="text-xs font-normal text-muted">/ {targetFat}g</span></p>
-          <div className="h-2 rounded-full bg-mist overflow-hidden">
-            <div className="h-full rounded-full bg-indigo-500 transition-all duration-300" style={{ width: `${fatPct}%` }} />
+          <p className="text-2xl font-bold text-text-primary">{curFat}g <span className="text-xs font-normal text-text-secondary">/ {targetFat}g</span></p>
+          <div className="h-2 rounded-full bg-surface-hover overflow-hidden">
+            <div className="h-full rounded-full bg-danger transition-all duration-300" style={{ width: `${fatPct}%` }} />
           </div>
         </div>
       </div>
@@ -372,8 +372,16 @@ export default function FoodPage() {
               </div>
 
               {items.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-line p-4 text-center text-xs text-muted">
-                  No items configured for {mealKey}. Click Add item or ask Xomni to generate suggestions.
+                <div 
+                  className="rounded-xl border border-dashed border-border p-6 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-surface-hover transition-colors duration-200"
+                  onClick={() => {
+                    setEditMealType(mealKey);
+                    setIsEditOpen(true);
+                  }}
+                >
+                  <Plus className="h-5 w-5 text-text-secondary mb-2" />
+                  <span className="text-[13px] font-medium text-text-primary">Add to {mealTitle}</span>
+                  <p className="text-[11px] text-text-secondary mt-1">Click to add manually, or ask Xomni</p>
                 </div>
               ) : (
                 <div className="space-y-2.5">

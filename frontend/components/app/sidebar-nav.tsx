@@ -174,32 +174,39 @@ export function SidebarNav({
       <aside
         ref={asideRef}
         className={cn(
-          "fixed inset-y-0 left-0 z-50 w-64 -translate-x-full border-r border-line bg-surface transition-transform duration-300 ease-soft lg:translate-x-0",
+          "fixed inset-y-0 left-0 z-50 w-[260px] -translate-x-full border-r border-border bg-surface transition-transform duration-300 ease-soft lg:translate-x-0",
           open && "translate-x-0",
         )}
         aria-label="Sidebar"
       >
         <div className="flex h-full flex-col overflow-y-auto overscroll-contain">
-          <div className="flex h-16 items-center gap-2 px-6">
-            <span className="font-display text-xl font-semibold text-ink">Aarogya</span>
-            <span className="rounded-full bg-primary-soft px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
-              Xomni
+          <div className="flex items-center gap-2 p-[20px] pb-4">
+            <span className="font-display text-[20px] font-semibold text-text-primary">Aarogya</span>
+            <span className="rounded-full border border-accent-gold text-accent-gold px-2 py-0.5 text-[11px] font-semibold leading-none">
+              XOMNI
             </span>
           </div>
-          <div className="px-3 pb-2 pt-4">
+          
+          <div className="px-3 pb-2 pt-2">
             <Link
               href={xomniAction.href}
               className={cn(
-                "flex items-center gap-3 rounded-xl border border-line bg-surface px-3 py-2.5 text-sm font-semibold text-ink shadow-card transition-colors duration-300 ease-soft hover:bg-mist",
-                activeItem(xomniAction.href) && "border-primary text-primary",
+                "relative flex items-center gap-[12px] rounded-xl px-[14px] py-[10px] text-[13px] font-medium transition-colors duration-150 ease-soft",
+                activeItem(xomniAction.href)
+                  ? "bg-surface-hover text-text-primary"
+                  : "text-text-secondary hover:bg-surface-hover hover:text-text-primary"
               )}
             >
-              <span className="flex items-center justify-center rounded-lg bg-mist p-1.5 text-muted">
+              {activeItem(xomniAction.href) && (
+                <span className="absolute left-0 top-0 h-full w-[3px] bg-accent-gold rounded-r-sm" />
+              )}
+              <span className={cn("flex items-center justify-center [&>svg]:h-[18px] [&>svg]:w-[18px]", activeItem(xomniAction.href) ? "text-accent-gold" : "text-text-secondary")}>
                 {xomniAction.icon}
               </span>
               {xomniAction.label}
             </Link>
           </div>
+
           <nav className="px-3 py-2" aria-label="App">
             <div className="space-y-1">
               {mainNav.map((item) => {
@@ -209,19 +216,17 @@ export function SidebarNav({
                     key={item.href}
                     href={item.href}
                     className={cn(
-                      "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors duration-300 ease-soft",
+                      "relative flex items-center gap-[12px] rounded-xl px-[14px] py-[10px] text-[13px] font-medium transition-colors duration-150 ease-soft",
                       active
-                        ? "bg-primary-soft text-primary"
-                        : "text-muted hover:bg-mist hover:text-ink",
+                        ? "bg-surface-hover text-text-primary"
+                        : "text-text-secondary hover:bg-surface-hover hover:text-text-primary"
                     )}
                     aria-current={active ? "page" : undefined}
                   >
-                    <span
-                      className={cn(
-                        "flex items-center justify-center rounded-lg p-1.5",
-                        active ? "bg-primary text-primary-foreground" : "bg-mist/60 text-muted",
-                      )}
-                    >
+                    {active && (
+                      <span className="absolute left-0 top-0 h-full w-[3px] bg-accent-gold rounded-r-sm" />
+                    )}
+                    <span className={cn("flex items-center justify-center [&>svg]:h-[18px] [&>svg]:w-[18px]", active ? "text-accent-gold" : "text-text-secondary")}>
                       {item.icon}
                     </span>
                     {item.label}
@@ -230,7 +235,8 @@ export function SidebarNav({
               })}
             </div>
           </nav>
-          <div className="mt-auto border-t border-line px-3 py-4">
+
+          <div className="mt-auto border-t border-border px-3 py-[14px]">
             <div className="space-y-1">
               {bottomNav.map((item) => {
                 const active = activeItem(item.href);
@@ -239,19 +245,17 @@ export function SidebarNav({
                     key={item.href}
                     href={item.href}
                     className={cn(
-                      "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors duration-300 ease-soft",
+                      "relative flex items-center gap-[12px] rounded-xl px-[14px] py-[10px] text-[13px] font-medium transition-colors duration-150 ease-soft",
                       active
-                        ? "bg-primary-soft text-primary"
-                        : "text-muted hover:bg-mist hover:text-ink",
+                        ? "bg-surface-hover text-text-primary"
+                        : "text-text-secondary hover:bg-surface-hover hover:text-text-primary"
                     )}
                     aria-current={active ? "page" : undefined}
                   >
-                    <span
-                      className={cn(
-                        "flex items-center justify-center rounded-lg p-1.5",
-                        active ? "bg-primary text-primary-foreground" : "bg-mist/60 text-muted",
-                      )}
-                    >
+                    {active && (
+                      <span className="absolute left-0 top-0 h-full w-[3px] bg-accent-gold rounded-r-sm" />
+                    )}
+                    <span className={cn("flex items-center justify-center [&>svg]:h-[18px] [&>svg]:w-[18px]", active ? "text-accent-gold" : "text-text-secondary")}>
                       {item.icon}
                     </span>
                     {item.label}
@@ -260,14 +264,14 @@ export function SidebarNav({
               })}
             </div>
             <div className="mt-4 space-y-2">
-              <p className="text-xs text-muted">
-                Powered by <span className="font-semibold text-primary">Xomni</span>
+              <p className="text-[11px] text-text-secondary">
+                Powered by <span className="font-semibold text-text-primary">Xomni</span>
               </p>
               {onLogout ? (
                 <button
                   type="button"
                   onClick={onLogout}
-                  className="w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm font-medium text-muted transition-colors duration-300 ease-soft hover:bg-mist hover:text-ink"
+                  className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-[13px] font-medium text-text-secondary transition-colors duration-150 ease-soft hover:bg-surface-hover hover:text-text-primary"
                 >
                   Sign out
                 </button>

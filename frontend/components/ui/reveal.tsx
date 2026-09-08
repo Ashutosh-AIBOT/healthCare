@@ -18,10 +18,16 @@ export function Reveal({
   children,
   className,
   delayMs = 0,
+  durationMs = 700,
+  distancePx = 16,
 }: {
   children: ReactNode;
   className?: string;
   delayMs?: number;
+  /** Reveal duration in ms. Default 700 preserves existing behavior. */
+  durationMs?: number;
+  /** Rise distance in px. Default 16 preserves existing behavior. */
+  distancePx?: number;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
@@ -46,13 +52,25 @@ export function Reveal({
     return () => observer.disconnect();
   }, []);
 
+  const durationClass: Record<number, string> = {
+    300: "duration-300",
+    400: "duration-[400ms]",
+    500: "duration-500",
+    700: "duration-700",
+  };
+  const hiddenClass: Record<number, string> = {
+    8: "translate-y-2",
+    12: "translate-y-3",
+    16: "translate-y-4",
+  };
   return (
     <div
       ref={ref}
       className={cn(
-        "transition-[opacity,transform] duration-700 ease-soft will-change-transform",
+        "transition-[opacity,transform] ease-soft will-change-transform",
+        durationClass[durationMs] ?? "duration-700",
         delayClass[delayMs] ?? "delay-0",
-        visible ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0",
+        visible ? "translate-y-0 opacity-100" : `${hiddenClass[distancePx] ?? "translate-y-4"} opacity-0`,
         className,
       )}
     >

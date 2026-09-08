@@ -1,88 +1,59 @@
 import { type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
-const colorStyles: Record<string, { bg: string; chip: string }> = {
-  primary: { bg: "bg-primary text-primary-foreground", chip: "bg-primary-foreground/20" },
-  lime: { bg: "bg-lime text-lime-ink", chip: "bg-lime-ink/10" },
-  blush: { bg: "bg-blush text-ink", chip: "bg-ink/10" },
-  charcoal: { bg: "bg-charcoal text-charcoal-foreground", chip: "bg-charcoal-foreground/20" },
-  apricot: { bg: "bg-apricot text-lime-ink", chip: "bg-lime-ink/10" },
-};
-
-const icons: Record<string, ReactNode> = {
-  primary: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6">
-      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-      <circle cx="9" cy="7" r="4" />
-      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-    </svg>
-  ),
-  lime: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6">
-      <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
-    </svg>
-  ),
-  blush: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6">
-      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-      <line x1="16" y1="2" x2="16" y2="6" />
-      <line x1="8" y1="2" x2="8" y2="6" />
-      <line x1="3" y1="10" x2="21" y2="10" />
-    </svg>
-  ),
-  charcoal: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6">
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-      <polyline points="14 2 14 8 20 8" />
-      <line x1="16" y1="13" x2="8" y2="13" />
-      <line x1="16" y1="17" x2="8" y2="17" />
-      <polyline points="10 9 9 9 8 9" />
-    </svg>
-  ),
-  apricot: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6">
-      <path d="M4.8 2.3A.3.3 0 1 0 5 2H4a2 2 0 0 0-2 2v5a6 6 0 0 0 6 6v0h.5a2.5 2.5 0 0 0 0-5H4Z" />
-      <path d="M15.5 11.5a5 5 0 0 0-5-5v-1h5v1Z" />
-      <path d="M14.5 11.5a5 5 0 0 1 5-5v1h-5v-1Z" />
-      <path d="M20.5 6.5H18v5h5v-2a2.5 2.5 0 0 0-2.5-2.5Z" />
-      <path d="M14.5 11.5v5a5 5 0 0 0 5 5h-2a3 3 0 0 1-3-3v-2.5a2.5 2.5 0 0 0-2.5-2.5H8v-1a5 5 0 0 1 5-5h1.5Z" />
-      <path d="M6.5 11.5v5a5 5 0 0 0 5 5h.5a2.5 2.5 0 0 0 0-5H6.5Z" />
-      <path d="M6.5 11.5a5 5 0 0 1 5-5h.5a2.5 2.5 0 0 1 0 5H11v5a5 5 0 0 1-5 5h-.5a2.5 2.5 0 0 1 0-5H6.5Z" />
-    </svg>
-  ),
+const colorStyles: Record<string, { chipBg: string; chipText: string; barBg: string }> = {
+  teal: { chipBg: "bg-accent-teal/15", chipText: "text-accent-teal", barBg: "bg-accent-teal" },
+  gold: { chipBg: "bg-accent-gold/15", chipText: "text-accent-gold", barBg: "bg-accent-gold" },
+  coral: { chipBg: "bg-danger/15", chipText: "text-danger", barBg: "bg-danger" },
+  blue: { chipBg: "bg-accent-water/15", chipText: "text-accent-water", barBg: "bg-accent-water" },
+  neutral: { chipBg: "bg-border", chipText: "text-text-primary", barBg: "bg-text-secondary" },
 };
 
 export function StatCard({
   label,
   value,
   trend,
-  color = "primary",
+  color = "neutral",
+  icon,
+  progress, // 0 to 100
   className,
 }: {
   label: string;
   value: string | number;
   trend?: string;
-  color?: keyof typeof colorStyles;
+  color?: "teal" | "gold" | "coral" | "blue" | "neutral";
+  icon?: ReactNode;
+  progress?: number;
   className?: string;
 }) {
-  const style = colorStyles[color] || colorStyles.primary;
+  const style = colorStyles[color] || colorStyles.neutral;
 
   return (
     <div
       className={cn(
-        "flex flex-col justify-between rounded-[1.75rem] p-6 shadow-lift",
-        style.bg,
+        "flex flex-col justify-between rounded-[16px] p-6 bg-surface border border-border",
         className,
       )}
     >
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium opacity-90">{label}</span>
-        <span className={cn("rounded-xl p-2", style.chip)}>{icons[color] || icons.primary}</span>
+        <span className="text-[13px] font-medium text-text-secondary">{label}</span>
+        {icon && (
+          <span className={cn("flex items-center justify-center h-8 w-8 rounded-full", style.chipBg, style.chipText)}>
+            {icon}
+          </span>
+        )}
       </div>
-      <div>
-        <p className="mt-4 text-3xl font-semibold tracking-tight">{value}</p>
-        {trend ? <p className="mt-1 text-xs opacity-90">{trend}</p> : null}
+      <div className="mt-4">
+        <p className="text-[28px] font-semibold tabular tracking-tight text-text-primary">{value}</p>
+        {trend && <p className="mt-1 text-[13px] text-text-secondary">{trend}</p>}
+        {typeof progress === "number" && (
+          <div className="mt-3 h-1 w-full rounded-full bg-surface-hover overflow-hidden">
+            <div 
+              className={cn("h-full rounded-full transition-all duration-500 ease-soft", style.barBg)} 
+              style={{ width: `${Math.max(0, Math.min(100, progress))}%` }} 
+            />
+          </div>
+        )}
       </div>
     </div>
   );

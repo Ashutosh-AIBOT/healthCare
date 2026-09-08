@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Card, EmptyState, ErrorState, Skeleton } from "@/components/ui/card";
 import { Disclaimer } from "@/components/brand";
 import { apiClient, getAccessToken } from "@/lib/auth-client";
+import { TriangleAlert, UploadCloud, ChevronDown, FileText, Sparkles } from "lucide-react";
 
 type Doc = { id: string; filename: string; status: string; job_id?: string | null };
 type Member = { id: string };
@@ -148,55 +149,91 @@ export function ReportsClient() {
         </p>
       </div>
 
-      {error ? <ErrorState description={error} onRetry={() => void load()} /> : null}
-
-      <Card>
-        <label className="block text-sm font-medium">Member</label>
-        <select
-          className="mt-1.5 w-full rounded-2xl border border-line bg-surface px-4 py-3 text-sm"
-          value={memberId}
-          onChange={(e) => setMemberId(e.target.value)}
-        >
-          {members.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.id.slice(0, 8)}…
-            </option>
-          ))}
-        </select>
-        <div className="mt-4">
-          <input
-            type="file"
-            accept="application/pdf,.pdf"
-            aria-label="Upload lab report PDF"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) void upload(f);
-            }}
-          />
-          {uploading ? <p className="mt-2 text-sm text-muted">Uploading…</p> : null}
+      {error && (
+        <div className="flex items-center justify-between rounded-xl border border-danger/30 bg-danger/5 p-4 mb-6">
+          <div className="flex items-center gap-3">
+            <TriangleAlert className="h-5 w-5 text-danger" />
+            <p className="text-[13px] font-medium text-danger">{error}</p>
+          </div>
+          <button onClick={() => void load()} className="rounded-lg px-3 py-1.5 text-[13px] font-medium text-danger hover:bg-danger/10 transition-colors">
+            Retry
+          </button>
         </div>
-      </Card>
+      )}
+
+      <div className="rounded-[1.75rem] border border-border bg-surface p-6 shadow-card space-y-4">
+        <div>
+          <label className="block text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">Select Family Member</label>
+          <div className="relative">
+            <select
+              className="w-full appearance-none rounded-xl border border-border bg-surface px-4 py-3 pr-10 text-[13px] font-medium text-text-primary outline-none focus:border-accent-gold transition-colors"
+              value={memberId}
+              onChange={(e) => setMemberId(e.target.value)}
+            >
+              {members.map((m) => (
+                <option key={m.id} value={m.id}>
+                  Member ID: {m.id.slice(0, 8)}…
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" />
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <label className="block text-xs font-semibold text-text-secondary uppercase tracking-wider mb-2">Upload Lab Report</label>
+          <div className="relative">
+            <input
+              type="file"
+              accept="application/pdf,.pdf"
+              id="file-upload"
+              className="peer absolute inset-0 h-full w-full opacity-0 cursor-pointer z-10"
+              aria-label="Upload lab report PDF"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void upload(f);
+              }}
+            />
+            <div className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border bg-surface hover:bg-surface-hover peer-focus-visible:border-accent-gold p-8 transition-colors">
+              <UploadCloud className="h-8 w-8 text-text-secondary" />
+              <p className="text-[13px] font-medium text-text-primary">
+                {uploading ? "Uploading document..." : "Click or drag PDF to upload"}
+              </p>
+              <p className="text-[11px] text-text-secondary">Supported: PDF (up to 10MB)</p>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {!docs?.length ? (
-        <EmptyState
-          title="No reports yet"
-          description="Upload a lab PDF to extract values and ask with citations."
-        />
+        <div className="rounded-[1.75rem] border border-border bg-surface p-12 text-center shadow-sm">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-surface-hover text-text-secondary mb-4">
+            <FileText className="h-6 w-6" />
+          </div>
+          <h3 className="text-[14px] font-semibold text-text-primary">No reports yet</h3>
+          <p className="text-[13px] text-text-secondary mt-1">Upload a lab PDF to extract values and ask with citations.</p>
+        </div>
       ) : (
         <ul className="space-y-3">
           {docs.map((d) => (
             <li key={d.id}>
-              <Card>
+              <div className="rounded-[1.25rem] border border-border bg-surface p-4 shadow-sm hover:shadow-card transition-shadow">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="font-semibold">{d.filename}</p>
-                    <p className="text-xs text-muted">Status: {d.status}</p>
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-surface-hover text-text-secondary">
+                      <FileText className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className="text-[13px] font-semibold text-text-primary">{d.filename}</p>
+                      <p className="text-[11px] text-text-secondary">Status: {d.status}</p>
+                    </div>
                   </div>
                   <Button size="sm" variant="secondary" onClick={() => void ask(d.id)} loading={asking}>
+                    <Sparkles className="h-3.5 w-3.5 mr-1.5" />
                     Ask about this report
                   </Button>
                 </div>
-              </Card>
+              </div>
             </li>
           ))}
         </ul>

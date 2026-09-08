@@ -4,7 +4,7 @@ import * as React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { EmptyState, ErrorState } from "@/components/ui/card";
 import { apiClient } from "@/lib/auth-client";
-import { Bell, Send, CheckCircle2, Circle, SkipForward } from "lucide-react";
+import { Bell, Send, CheckCircle2, Circle, SkipForward, TriangleAlert, Calendar } from "lucide-react";
 
 type TimeBlock = {
   id: string;
@@ -67,9 +67,9 @@ const priorityLabel: Record<string, string> = {
 };
 
 const kindMeta: Record<string, { label: string; color: string; bg: string }> = {
-  productive: { label: "Productive", color: "text-primary", bg: "bg-primary-soft" },
-  backup: { label: "Backup", color: "text-amber-700", bg: "bg-amber-50" },
-  holiday: { label: "Holiday", color: "text-emerald-700", bg: "bg-emerald-50" },
+  productive: { label: "Productive", color: "text-accent-teal", bg: "bg-accent-teal/15" },
+  backup: { label: "Backup", color: "text-accent-gold", bg: "bg-accent-gold/15" },
+  holiday: { label: "Holiday", color: "text-accent-water", bg: "bg-accent-water/15" },
 };
 
 type Period = "day" | "week" | "month" | "year";
@@ -219,11 +219,11 @@ export default function TimeManagementPage() {
   if (!timetables || !todos) {
     return (
       <div className="space-y-6">
-        <div className="h-10 w-48 animate-pulse rounded-xl bg-mist" />
-        <div className="h-40 animate-pulse rounded-[1.75rem] border border-line/30 bg-surface" />
+        <div className="h-10 w-48 animate-pulse rounded-xl bg-surface-hover" />
+        <div className="h-40 animate-pulse rounded-[1.75rem] border border-border bg-surface" />
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="h-28 animate-pulse rounded-[1.75rem] border border-line/30 bg-surface" />
+            <div key={i} className="h-28 animate-pulse rounded-[1.75rem] border border-border bg-surface" />
           ))}
         </div>
       </div>
@@ -241,25 +241,45 @@ export default function TimeManagementPage() {
 
   return (
     <div className="space-y-6">
+      {error && (
+        <div className="flex items-center justify-between rounded-xl border border-danger/30 bg-danger/5 p-4">
+          <div className="flex items-center gap-3">
+            <TriangleAlert className="h-5 w-5 text-danger" />
+            <p className="text-[13px] font-medium text-danger">{error}</p>
+          </div>
+          <button onClick={load} className="rounded-lg px-3 py-1.5 text-[13px] font-medium text-danger hover:bg-danger/10 transition-colors">
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* Hero card */}
-      <div className="rounded-[1.75rem] border border-line bg-gradient-to-br from-surface via-surface to-mist/30 p-6 shadow-card">
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+      <div className="rounded-[1.75rem] border border-border bg-surface p-6 shadow-card relative overflow-hidden">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between relative z-10">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted">Time Management</p>
-            <h1 className="mt-1 font-display text-3xl font-semibold tracking-tight text-ink">
+            <p className="text-xs font-semibold uppercase tracking-wide text-text-secondary">Time Management</p>
+            <h1 className="mt-1 font-display text-3xl font-semibold tracking-tight text-text-primary">
               {isToday ? `Good ${new Date().getHours() < 12 ? "morning" : "evening"}!` : `Schedule for ${selectedDate}`}
             </h1>
-            <p className="mt-1 text-sm text-muted">
+            <p className="mt-1 text-[13px] text-text-secondary">
               Today&apos;s mode: <span className={`font-semibold ${km.color}`}>{km.label}</span> · {timetables.reduce((a, t) => a + t.blocks.length, 0)} blocks across 3 timetables
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-4">
-            <div className="flex rounded-full border border-line bg-surface p-1">
+            <div className="relative flex rounded-full border border-border bg-surface p-1">
+              <div 
+                className="absolute top-1 bottom-1 w-[68px] rounded-full bg-accent-gold/15 transition-transform duration-300 ease-soft"
+                style={{
+                  transform: `translateX(${["day", "week", "month", "year"].indexOf(period) * 100}%)`
+                }}
+              />
               {(["day", "week", "month", "year"] as Period[]).map((p) => (
                 <button
                   key={p}
                   onClick={() => setPeriod(p)}
-                  className={`rounded-full px-4 py-1.5 text-xs font-semibold capitalize transition ${period === p ? "bg-primary text-primary-foreground shadow-lift" : "text-muted hover:text-ink"}`}
+                  className={`relative z-10 w-[68px] py-1.5 text-[13px] font-semibold capitalize transition-colors duration-300 ease-soft ${
+                    period === p ? "text-accent-gold" : "text-text-secondary hover:text-text-primary"
+                  }`}
                 >
                   {p}
                 </button>
@@ -267,7 +287,7 @@ export default function TimeManagementPage() {
             </div>
             <button
               onClick={handleSendDailyReport}
-              className="inline-flex items-center gap-2 rounded-full border border-line bg-surface px-4 py-2 text-xs font-semibold text-ink hover:bg-mist"
+              className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-4 py-2 text-[13px] font-semibold text-text-primary hover:bg-surface-hover"
             >
               <Send className="h-4 w-4" />
               Telegram daily report
@@ -366,7 +386,16 @@ export default function TimeManagementPage() {
             </div>
             <div className="rounded-[1.5rem] border border-line bg-surface p-4 shadow-card">
               {dayBlocks.length === 0 ? (
-                <p className="text-sm text-muted">No blocks planned for today.</p>
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-hover text-text-secondary mb-4">
+                    <Calendar className="h-6 w-6" />
+                  </div>
+                  <h3 className="text-[14px] font-semibold text-text-primary">No blocks planned</h3>
+                  <p className="text-[13px] text-text-secondary mt-1">Your schedule is clear for today.</p>
+                  <button className="mt-4 rounded-xl border border-border bg-surface px-4 py-2 text-[13px] font-medium text-text-primary shadow-sm hover:bg-surface-hover transition-colors">
+                    Add a block
+                  </button>
+                </div>
               ) : (
                 <div className="space-y-3">
                   {dayBlocks.map((b) => (

@@ -4,10 +4,12 @@ from fastapi import FastAPI
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from fastapi.responses import JSONResponse
+
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.errors import AppError, app_error_handler, db_error_handler
-from app.core.logging import configure_logging
+from app.core.logging import configure_logging, get_logger
 from app.core.middleware import RequestContextMiddleware
 from app.db.session import engine
 from sqlalchemy.exc import SQLAlchemyError
@@ -24,8 +26,29 @@ configure_logging()
 
 app = FastAPI(title="Aarogya API", version="0.1.0", lifespan=lifespan)
 app.add_middleware(RequestContextMiddleware)
+async def connectivity_error_handler(_request, exc: Exception) -> JSONResponse:
+    # DB/Redis/SMTP down (no Postgres in dev sandbox, network blip, DNS).
+    # Map to 503 JSON — never leak host/port details, never 500 text page.
+    get_logger("aarogya.connectivity").warning(
+        "connectivity_error", extra={"exc_type": type(exc).__name__}
+    )
+    return JSONResponse(
+        status_code=503,
+        content={
+            "type": "https://aarogya.app/errors/service-unavailable",
+            "title": "Service Unavailable",
+            "status": 503,
+            "code": "SERVICE_UNAVAILABLE",
+            "detail": "Service temporarily unavailable. Please retry in a moment.",
+            "meta": {},
+        },
+    )
+
+
 app.add_exception_handler(AppError, app_error_handler)
 app.add_exception_handler(SQLAlchemyError, db_error_handler)
+app.add_exception_handler(OSError, connectivity_error_handler)
+app.add_exception_handler(ConnectionError, connectivity_error_handler)
 app.include_router(api_router)
 
 

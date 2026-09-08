@@ -31,11 +31,28 @@ export async function proxyToApi(
   }
   if (init.cookie) headers.set("Cookie", init.cookie);
 
-  const upstream = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers,
-    cache: "no-store",
-  });
+  let upstream: Response;
+  try {
+    upstream = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      headers,
+      cache: "no-store",
+    });
+  } catch {
+    // Backend unreachable (DB down, service restarting, wrong API_INTERNAL_URL).
+    // Return JSON 503 — never let the route crash into Next's 500 text/plain page.
+    return new Response(
+      JSON.stringify({
+        type: "https://aarogya.app/errors/service-unavailable",
+        title: "Service Unavailable",
+        status: 503,
+        code: "SERVICE_UNAVAILABLE",
+        detail: "Service temporarily unavailable. The API is not reachable — please retry in a moment.",
+        meta: {},
+      }),
+      { status: 503, headers: { "content-type": "application/json" } },
+    );
+  }
 
   const body = await upstream.text();
   const out = new Headers();

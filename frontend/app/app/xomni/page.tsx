@@ -14,6 +14,13 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Radio } from "lucide-react";
+import {
+  LiveKitRoom,
+  RoomAudioRenderer,
+  VoiceAssistantControlBar,
+  BarVisualizer,
+} from "@livekit/components-react";
+import "@livekit/components-styles";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -314,74 +321,39 @@ export default function XomniPage() {
   );
 
   // ── Voice recording ──────────────────────────────────────────────────────
+  const [liveKitToken, setLiveKitToken] = useState<string | null>(null);
+  const [liveKitUrl, setLiveKitUrl] = useState<string>("");
+
   const startVoiceRecording = async () => {
     setVoiceError(null);
     setVoiceState("requesting");
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-        ? "audio/webm;codecs=opus"
-        : MediaRecorder.isTypeSupported("audio/webm")
-          ? "audio/webm"
-          : "audio/ogg";
+      const tokenHeader = getAccessToken();
+      const res = await fetch("/api/v1/xomni/voice/livekit-token", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(tokenHeader ? { Authorization: `Bearer ${tokenHeader}` } : {}),
+        },
+        body: JSON.stringify({ conversation_id: activeConvId }),
+      });
 
-      const recorder = new MediaRecorder(stream, { mimeType });
-      audioChunksRef.current = [];
-
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) audioChunksRef.current.push(e.data);
-      };
-
-      recorder.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop());
-        setVoiceState("transcribing");
-
-        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
-        const formData = new FormData();
-        formData.append("audio", audioBlob, "recording.webm");
-
-        const token = getAccessToken();
-        try {
-          const res = await fetch("/api/v1/xomni/voice/transcribe", {
-            method: "POST",
-            headers: token ? { Authorization: `Bearer ${token}` } : {},
-            credentials: "include",
-            body: formData,
-          });
-
-          if (!res.ok) {
-            const err = await res.json().catch(() => ({ detail: "Transcription failed" }));
-            throw new Error(err.detail || "Transcription failed");
-          }
-
-          const data = await res.json() as { transcript: string };
-          if (data.transcript.trim()) {
-            setInput(data.transcript);
-            await send(data.transcript);
-          } else {
-            setVoiceError("Could not understand audio. Please try again.");
-          }
-        } catch (e) {
-          setVoiceError(e instanceof Error ? e.message : "Voice failed. Check API key.");
-        } finally {
-          setVoiceState("idle");
-        }
-      };
-
-      recorder.start(250);
-      mediaRecorderRef.current = recorder;
-      setVoiceState("recording");
+      if (!res.ok) throw new Error("Could not get voice token");
+      const data = await res.json();
+      
+      setLiveKitToken(data.token);
+      setLiveKitUrl(data.livekit_url || process.env.NEXT_PUBLIC_LIVEKIT_URL || "");
+      setVoiceState("recording"); // Map "recording" to "connected" for UI
     } catch (e) {
-      setVoiceState("error");
-      setVoiceError("Microphone access denied. Please allow microphone permissions.");
+      setVoiceError(e instanceof Error ? e.message : "Voice failed. Check API key.");
+      setVoiceState("idle");
     }
   };
 
   const stopVoiceRecording = () => {
-    if (mediaRecorderRef.current?.state === "recording") {
-      mediaRecorderRef.current.stop();
-    }
+    setLiveKitToken(null);
+    setVoiceState("idle");
   };
 
   const toggleVoice = () => {
@@ -543,6 +515,25 @@ export default function XomniPage() {
 
         {/* Content Area */}
         <div className="flex-1 flex flex-col relative min-w-0 bg-paper overflow-hidden">
+          {liveKitToken && (
+             <LiveKitRoom
+              serverUrl={liveKitUrl}
+              token={liveKitToken}
+              connect={true}
+              audio={true}
+              video={false}
+              onDisconnected={stopVoiceRecording}
+              className="absolute inset-0 z-40 pointer-events-none flex flex-col items-center justify-end pb-32"
+            >
+              <RoomAudioRenderer />
+              <div className="pointer-events-auto bg-surface/90 backdrop-blur-xl border border-line/20 p-6 rounded-3xl shadow-2xl flex flex-col items-center gap-6 animate-in slide-in-from-bottom-10 fade-in duration-300">
+                <div className="h-16 w-64 flex items-center justify-center">
+                  <BarVisualizer state="listening" barCount={7} trackRef={undefined as any} options={{ minHeight: 8 }} />
+                </div>
+                <VoiceAssistantControlBar />
+              </div>
+            </LiveKitRoom>
+          )}
 
           <div className="flex-1 overflow-y-auto no-scrollbar relative flex flex-col">
             {isEmpty ? (

@@ -315,6 +315,7 @@ class LLMGateway:
         room_name: str,
         participant_identity: str,
         participant_name: str,
+        metadata: str = "",
     ) -> str:
         """Generate a LiveKit access token for a voice room."""
         lk_api_key = os.environ.get("LIVEKIT_API_KEY", "")
@@ -330,6 +331,7 @@ class LLMGateway:
                 AccessToken(lk_api_key, lk_api_secret)
                 .with_identity(participant_identity)
                 .with_name(participant_name)
+                .with_metadata(metadata)
                 .with_grants(VideoGrants(
                     room_join=True,
                     room=room_name,

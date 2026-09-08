@@ -13,6 +13,7 @@
     "@hookform/resolvers": "^3.10.0",
     "@livekit/components-core": "^0.12.15",
     "@livekit/components-react": "^2.9.24",
+    "@livekit/components-styles": "^1.2.0",
     "clsx": "^2.1.1",
     "framer-motion": "^11.15.0",
     "livekit-client": "^2.22.3",

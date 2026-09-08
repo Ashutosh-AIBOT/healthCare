@@ -19,4 +19,7 @@ python-multipart>=0.0.9
 redis>=5.2.0
 sqlalchemy[asyncio]>=2.0.36
 uvicorn[standard]>=0.32.0
-
+livekit-agents>=0.8.0
+livekit-plugins-groq>=0.3.0
+livekit-plugins-openai>=0.9.0
+livekit-plugins-silero>=0.3.0

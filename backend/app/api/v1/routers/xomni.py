@@ -250,11 +250,18 @@ async def livekit_token(
     name = current_user.full_name or current_user.email
 
     gateway = LLMGateway(db, user_id=str(current_user.id))
+    import json
+    metadata = json.dumps({
+        "user_id": str(current_user.id), 
+        "conversation_id": str(payload.conversation_id) if payload.conversation_id else None
+    })
+    
     try:
         token = await gateway.create_livekit_token(
             room_name=room,
             participant_identity=identity,
             participant_name=name,
+            metadata=metadata,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

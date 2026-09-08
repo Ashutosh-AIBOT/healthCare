@@ -75,17 +75,7 @@ export function LearnShell({ children }: { children: React.ReactNode }) {
           <CardContent className="p-4">
             <h2 className="text-sm font-semibold text-ink">Learn</h2>
             <p className="mt-1 text-xs text-muted">Food & health test info</p>
-            <form onSubmit={handleSearch} className="mt-3">
-              <div className="flex items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2">
-                <Search className="h-4 w-4 text-muted" />
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search..."
-                  className="flex-1 bg-transparent text-sm outline-none"
-                />
-              </div>
-            </form>
+
             <nav className="mt-4 space-y-1">
               {mainNav.map((item) => (
                 <button

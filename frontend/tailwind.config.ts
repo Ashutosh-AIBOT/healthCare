@@ -87,11 +87,15 @@ const config: Config = {
           "0%, 100%": { transform: "translate(0, 0) scale(1)" },
           "50%": { transform: "translate(2%, -3%) scale(1.04)" },
         },
+        shimmer: {
+          "100%": { transform: "translateX(100%)" },
+        },
       },
       animation: {
         "fade-up": "fade-up 0.9s cubic-bezier(0.32, 0.72, 0, 1) both",
         "home-rise": "home-rise 0.5s ease-out both",
         drift: "drift 18s ease-in-out infinite",
+        shimmer: "shimmer 2s infinite",
       },
     },
   },

@@ -7,9 +7,9 @@ Token stored Fernet-encrypted (same pattern as api_key_service).
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -31,3 +31,36 @@ class TelegramIntegration(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     telegram_chat_id: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True, index=True)
     link_code_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     link_code_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    checkin_hours: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_checkin_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    day_start_hour: Mapped[int] = mapped_column(Integer, nullable=False, default=6)
+    day_end_hour: Mapped[int] = mapped_column(Integer, nullable=False, default=22)
+
+
+class TelegramUpdate(Base):
+    """Dedup log for incoming Telegram update_ids (retry-storm protection)."""
+
+    __tablename__ = "telegram_updates"
+
+    update_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class TelegramCheckinSlot(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """One scheduled check-in message: atomic pending→sent→answered lifecycle."""
+
+    __tablename__ = "telegram_checkin_slots"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    slot_time: Mapped[str] = mapped_column(String(5), nullable=False)
+    timetable_block_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("time_blocks.id", ondelete="SET NULL"), nullable=True
+    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    answered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    message_text: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -110,6 +110,27 @@ def _escape_md(text: str) -> str:
     return re.sub(r"([_*\[\]()~`>#+\-=|{}.!])", r"\\\1", text)
 
 
+def decrypt_token_for(row: TelegramIntegration) -> str:
+    return decrypt_api_key(row.bot_token_encrypted)
+
+
+async def fetch_updates(bot_token: str, offset: int | None = None, timeout: int = 30) -> list[dict]:
+    params: dict = {"timeout": timeout}
+    if offset is not None:
+        params["offset"] = offset
+    async with httpx.AsyncClient(timeout=timeout + 10) as client:
+        resp = await client.post(f"{TG_API}/bot{bot_token}/getUpdates", json=params)
+        data = resp.json()
+        if not data.get("ok"):
+            raise AppError(
+                code="TELEGRAM_API_ERROR",
+                status=502,
+                detail="Telegram getUpdates rejected.",
+            )
+        result = data.get("result")
+        return result if isinstance(result, list) else []
+
+
 async def send_message(bot_token: str, chat_id: str, text: str) -> None:
     for i in range(0, len(text), MAX_TG_LEN):
         chunk = text[i : i + MAX_TG_LEN]

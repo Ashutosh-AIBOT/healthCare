@@ -92,7 +92,6 @@ async def create_link_code(
 @router.post("/webhook")
 async def telegram_webhook(
     request: Request,
-    db: Annotated[AsyncSession, Depends(get_db)],
     x_telegram_bot_api_secret_token: Annotated[str | None, Header()] = None,
 ) -> dict:
     if settings.telegram_webhook_secret:
@@ -102,5 +101,11 @@ async def telegram_webhook(
         update = await request.json()
     except Exception:
         raise AppError(code="VALIDATION_FAILED", status=422, detail="Invalid update payload.")
-    await telegram_service.handle_update(db, update if isinstance(update, dict) else {})
+    if not isinstance(update, dict):
+        raise AppError(code="VALIDATION_FAILED", status=422, detail="Invalid update payload.")
+    # Ack fast: all Telegram I/O + LLM work happens in the Celery task so
+    # Telegram never times out and retries (dedup table guards replays).
+    from app.tasks.telegram_tasks import process_telegram_update
+
+    process_telegram_update.delay(update)
     return {"ok": True}

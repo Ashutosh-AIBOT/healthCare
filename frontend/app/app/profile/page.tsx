@@ -404,6 +404,9 @@ type TelegramStatus = {
   bot_username: string | null;
   linked: boolean;
   allowed_username: string | null;
+  checkin_hours?: number;
+  day_start_hour?: number;
+  day_end_hour?: number;
 };
 
 function TelegramKeyForm({ onSaved }: { existing?: ApiKeyItem; onSaved: () => void }) {
@@ -470,6 +473,28 @@ function TelegramKeyForm({ onSaved }: { existing?: ApiKeyItem; onSaved: () => vo
     }
   };
 
+  const saveSettings = async (patch: { checkin_hours?: number; day_start_hour?: number; day_end_hour?: number }) => {
+    setErr(null);
+    const res = await apiClient<TelegramStatus>("/api/v1/integrations/telegram/settings", {
+      method: "PATCH",
+      body: JSON.stringify({
+        checkin_hours: status?.checkin_hours ?? 0,
+        day_start_hour: status?.day_start_hour ?? 6,
+        day_end_hour: status?.day_end_hour ?? 22,
+        ...patch,
+      }),
+    });
+    if (res.error) setErr(res.error.detail || "Failed to save check-in settings.");
+    else if (res.data) {
+      setStatus(res.data);
+      setMsg(
+        (res.data.checkin_hours ?? 0) === 0
+          ? "Check-ins turned off."
+          : `Check-ins every ${res.data.checkin_hours}h, ${res.data.day_start_hour}:00–${res.data.day_end_hour}:00.`,
+      );
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2">
@@ -521,6 +546,53 @@ function TelegramKeyForm({ onSaved }: { existing?: ApiKeyItem; onSaved: () => vo
               Generate link code
             </Button>
             {linkCode && <code className="text-lg font-mono font-bold tracking-widest">{linkCode}</code>}
+          </div>
+        </div>
+      )}
+      {status?.active && status.linked && (
+        <div className="rounded-2xl border border-line bg-mist/30 p-4 space-y-3">
+          <p className="text-xs font-semibold text-ink">Check-in reminders</p>
+          <p className="text-xs text-muted">How often should the bot ask what you did? Off by default.</p>
+          <div className="flex flex-wrap items-center gap-2">
+            {[0, 1, 2, 3, 4, 5].map((h) => (
+              <button
+                key={h}
+                type="button"
+                onClick={() => void saveSettings({ checkin_hours: h })}
+                aria-pressed={(status.checkin_hours ?? 0) === h}
+                className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                  (status.checkin_hours ?? 0) === h
+                    ? "border-primary bg-primary-soft text-primary"
+                    : "border-line bg-surface text-muted hover:bg-mist hover:text-ink"
+                }`}
+              >
+                {h === 0 ? "Off" : `Every ${h}h`}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2 text-xs text-muted">
+            <span>Day window</span>
+            <select
+              value={status.day_start_hour ?? 6}
+              onChange={(e) => void saveSettings({ day_start_hour: Number(e.target.value) })}
+              className="rounded-lg border border-line bg-surface px-2 py-1 text-xs"
+              aria-label="Day start hour"
+            >
+              {Array.from({ length: 24 }).map((_, h) => (
+                <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>
+              ))}
+            </select>
+            <span>to</span>
+            <select
+              value={status.day_end_hour ?? 22}
+              onChange={(e) => void saveSettings({ day_end_hour: Number(e.target.value) })}
+              className="rounded-lg border border-line bg-surface px-2 py-1 text-xs"
+              aria-label="Day end hour"
+            >
+              {Array.from({ length: 24 }).map((_, h) => (
+                <option key={h + 1} value={h + 1}>{String(h + 1).padStart(2, "0")}:00</option>
+              ))}
+            </select>
           </div>
         </div>
       )}

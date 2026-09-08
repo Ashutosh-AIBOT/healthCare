@@ -163,6 +163,128 @@ async def test_webhook_rejects_bad_json(client):
     assert res.status_code in (200, 422)
 
 
+async def test_settings_interval_and_off(client, monkeypatch):
+    token = await _login(client, email="tg-user7@example.com", handle="tg_user7")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # No bot yet → 400
+    res = await client.patch(
+        "/api/v1/integrations/telegram/settings",
+        json={"checkin_hours": 2, "day_start_hour": 6, "day_end_hour": 22},
+        headers=headers,
+    )
+    assert res.status_code == 400
+
+    async def fake_verify(bot_token: str):
+        return "mybot"
+
+    monkeypatch.setattr("app.services.telegram_service.verify_bot_token", fake_verify)
+    await client.post(
+        "/api/v1/integrations/telegram", json={"bot_token": "123:VALIDTOKEN"}, headers=headers
+    )
+
+    # Bad window rejected
+    bad = await client.patch(
+        "/api/v1/integrations/telegram/settings",
+        json={"checkin_hours": 2, "day_start_hour": 22, "day_end_hour": 6},
+        headers=headers,
+    )
+    assert bad.status_code == 422
+
+    ok = await client.patch(
+        "/api/v1/integrations/telegram/settings",
+        json={"checkin_hours": 2, "day_start_hour": 6, "day_end_hour": 22},
+        headers=headers,
+    )
+    assert ok.status_code == 200
+    assert ok.json()["checkin_hours"] == 2
+
+    # Slots endpoint reflects settings (may be empty outside window — 200 either way)
+    sl = await client.get("/api/v1/integrations/telegram/slots", headers=headers)
+    assert sl.status_code == 200
+    assert isinstance(sl.json(), list)
+
+    # Switching Off cancels pending slots
+    off = await client.patch(
+        "/api/v1/integrations/telegram/settings",
+        json={"checkin_hours": 0, "day_start_hour": 6, "day_end_hour": 22},
+        headers=headers,
+    )
+    assert off.json()["checkin_hours"] == 0
+    sl2 = await client.get("/api/v1/integrations/telegram/slots", headers=headers)
+    assert sl2.json() == []
+
+
+async def test_nl_todo_intent_and_checkin_reply(client, db, monkeypatch):
+    from app.services import telegram_service
+
+    assert telegram_service.parse_todo_intent("add walking to my todos") == "walking"
+    assert telegram_service.parse_todo_intent("remind me to drink water") == "drink water"
+    assert telegram_service.parse_todo_intent("hello there") is None
+    assert telegram_service.parse_checkin_outcome("done, finished it")[0] == "done"
+    assert telegram_service.parse_checkin_outcome("half done, started")[0] == "partial"
+    assert telegram_service.parse_checkin_outcome("couldn't do it")[0] == "skipped"
+
+    token = await _login(client, email="tg-user8@example.com", handle="tg_user8")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    async def fake_verify(bot_token: str):
+        return "mybot"
+
+    sent: list[tuple[str, str]] = []
+
+    async def fake_send(bot_token: str, chat_id: str, text: str) -> None:
+        sent.append((chat_id, text))
+
+    monkeypatch.setattr("app.services.telegram_service.verify_bot_token", fake_verify)
+    monkeypatch.setattr("app.services.telegram_service.send_message", fake_send)
+    captured = _capture_delay(monkeypatch)
+
+    await client.post(
+        "/api/v1/integrations/telegram", json={"bot_token": "123:VALIDTOKEN"}, headers=headers
+    )
+    code = (
+        await client.post("/api/v1/integrations/telegram/link-code", headers=headers)
+    ).json()["code"]
+
+    async def post_update(text: str, chat: int = 444):
+        res = await client.post(
+            "/api/v1/integrations/telegram/webhook",
+            json={"message": {"chat": {"id": chat}, "text": text, "from": {"username": "me"}}},
+        )
+        assert res.status_code == 200
+        await _drain(db, captured)
+
+    await post_update(f"/start {code}")
+    assert any("Linked" in t for _, t in sent)
+
+    # NL intent creates a todo without /todo command
+    sent.clear()
+    await post_update("please add evening walking to my todos")
+    assert any("Todo added" in t and "walking" in t for _, t in sent)
+
+    # Check-in reply path: mark a slot sent, then answer it
+    from sqlalchemy import select
+
+    from app.models.telegram import TelegramCheckinSlot
+    from app.models.user import User
+
+    me = (await db.execute(select(User).where(User.email == "tg-user8@example.com"))).scalar_one()
+    slot = TelegramCheckinSlot(
+        user_id=me.id, date=__import__("datetime").date.today(),
+        slot_time="09:00", status="sent",
+    )
+    db.add(slot)
+    await db.flush()
+
+    sent.clear()
+    await post_update("did my walking, felt good")
+    assert any("Score today" in t or "partial" in t for _, t in sent)
+    got = (await db.execute(select(TelegramCheckinSlot).where(TelegramCheckinSlot.id == slot.id))).scalar_one()
+    assert got.status == "answered"
+    assert got.answered_at is not None
+
+
 async def test_update_dedup_claim(db):
     from app.tasks.telegram_tasks import _claim_update
 

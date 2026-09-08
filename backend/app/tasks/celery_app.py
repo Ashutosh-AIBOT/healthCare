@@ -12,4 +12,9 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.telegram_tasks.poll_telegram_once",
         "schedule": 30.0,
     },
+    # Check-in tick: morning slot generation + due sender.
+    "telegram-checkins": {
+        "task": "app.tasks.telegram_tasks.run_checkin_tick",
+        "schedule": 600.0,
+    },
 }

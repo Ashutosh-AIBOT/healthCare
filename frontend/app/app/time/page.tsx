@@ -36,6 +36,7 @@ type HolidayRule = { id: string; rule_type: "weekly" | "specific"; weekday: numb
 type DayPlanBlock = { id: string; title: string; start_minute: number; end_minute: number; priority: string; status?: string | null; is_current: boolean; is_past: boolean; needs_checkin: boolean };
 type DayPlan = { date: string; kind: string; timetable_name: string; current_minute: number; blocks: DayPlanBlock[] };
 type TimeEntry = { id: string; date: string; block_id: string; actual_title: string; matched: boolean; duration_minutes: number };
+type CheckinSlot = { id: string; date: string; slot_time: string; status: string; sent_at: string | null; answered_at: string | null; message_text: string | null };
 
 function fmtMin(m: number) {
   const h = Math.floor(m / 60);
@@ -84,25 +85,25 @@ export default function TimeManagementPage() {
   const [period, setPeriod] = useState<Period>("day");
   const [dayPlan, setDayPlan] = useState<DayPlan | null>(null);
   const [entries, setEntries] = useState<TimeEntry[]>([]);
+  const [slots, setSlots] = useState<CheckinSlot[]>([]);
   const [showCheckin, setShowCheckin] = useState(false);
   const [checkinBlock, setCheckinBlock] = useState<DayPlanBlock | null>(null);
   const [checkinTitle, setCheckinTitle] = useState("");
   const [checkinMatched, setCheckinMatched] = useState(true);
-  const [telegramChatId, setTelegramChatId] = useState<string>("");
-  const [telegramStatus, setTelegramStatus] = useState<string>("");
   const [newTodoTitle, setNewTodoTitle] = useState("");
   const [newTodoPriority, setNewTodoPriority] = useState<"normal" | "important" | "less">("normal");
   const [addingTodo, setAddingTodo] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
-    const [tt, td, hr, st, plan, ents] = await Promise.all([
+    const [tt, td, hr, st, plan, ents, sl] = await Promise.all([
       apiClient<Timetable[]>("/api/v1/time/timetables"),
       apiClient<Todo[]>(`/api/v1/time/todos?due_date=${selectedDate}`),
       apiClient<HolidayRule[]>("/api/v1/time/holiday-rules"),
       apiClient<any>(`/api/v1/time/day/${selectedDate}/stats`),
       apiClient<DayPlan>(`/api/v1/time/day/${selectedDate}/plan`),
       apiClient<TimeEntry[]>(`/api/v1/time/day/${selectedDate}/entries`),
+      apiClient<CheckinSlot[]>(`/api/v1/integrations/telegram/slots?date=${selectedDate}`),
     ]);
     if (tt.error || td.error) {
       setError((tt.error || td.error)?.detail || "Failed to load time data. Please refresh or sign in again.");
@@ -116,6 +117,7 @@ export default function TimeManagementPage() {
     if (!st.error) setStats(st.data);
     if (!plan.error) setDayPlan(plan.data || null);
     if (!ents.error) setEntries(ents.data || []);
+    if (!sl.error) setSlots(sl.data || []);
   }, [selectedDate]);
 
   useEffect(() => {
@@ -180,24 +182,6 @@ export default function TimeManagementPage() {
     setAddingTodo(false);
     setNewTodoTitle("");
     void load();
-  };
-
-  const handleConnectTelegram = async () => {
-    setTelegramStatus("connect_requested");
-    await apiClient("/api/v1/integrations/telegram/connect", {
-      method: "POST",
-      body: JSON.stringify({ chat_id: telegramChatId }),
-    });
-    setTelegramStatus("connected");
-  };
-
-  const handleSendDailyReport = async () => {
-    await apiClient("/api/v1/integrations/telegram/daily-report", {
-      method: "POST",
-      body: JSON.stringify({ date: selectedDate }),
-    });
-    setTelegramStatus("report_sent");
-    setTimeout(() => setTelegramStatus(""), 3000);
   };
 
   const calendar = useMemo(() => {
@@ -286,11 +270,11 @@ export default function TimeManagementPage() {
               ))}
             </div>
             <button
-              onClick={handleSendDailyReport}
+              onClick={() => setShowCheckin(true)}
               className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-4 py-2 text-[13px] font-semibold text-text-primary hover:bg-surface-hover"
             >
               <Send className="h-4 w-4" />
-              Telegram daily report
+              Check in now
             </button>
           </div>
         </div>
@@ -376,6 +360,50 @@ export default function TimeManagementPage() {
         </div>
       </div>
 
+      {/* Message schedule: planned vs actual, same store Telegram writes */}
+      <div className="rounded-[1.5rem] border border-line bg-surface p-5 shadow-card">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="font-semibold text-ink">Message schedule — {selectedDate}</h2>
+            <p className="text-xs text-muted">Telegram check-ins + what you actually did, side by side.</p>
+          </div>
+          <a href="/app/profile" className="text-xs font-semibold text-primary hover:underline">Rhythm settings</a>
+        </div>
+        {slots.length === 0 ? (
+          <p className="mt-3 text-sm text-muted">No check-ins scheduled. Set a rhythm (Off/1–5h) in Profile → Telegram.</p>
+        ) : (
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted">Planned</p>
+              {slots.map((s) => (
+                <div key={s.id} className="flex items-center justify-between gap-2 rounded-xl bg-mist/50 px-3 py-2">
+                  <span className="text-sm font-medium text-ink tabular">{s.slot_time}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                    s.status === "answered" ? "bg-healthy/15 text-healthy"
+                    : s.status === "sent" ? "bg-primary-soft text-primary"
+                    : s.status === "expired" || s.status === "skipped" ? "bg-mist text-muted"
+                    : "bg-apricot/15 text-apricot"
+                  }`}>{s.status}</span>
+                </div>
+              ))}
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted">Actually did</p>
+              {entries.length === 0 ? (
+                <p className="text-sm text-muted">Nothing logged yet — reply to a check-in or use Check in.</p>
+              ) : (
+                entries.map((e) => (
+                  <div key={e.id} className="rounded-xl bg-mist/50 px-3 py-2">
+                    <p className="text-sm text-ink">{e.actual_title}</p>
+                    <p className="text-[11px] text-muted">{e.matched ? "Matched plan" : "Off plan"} · {e.duration_minutes}m</p>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Day plan / Timeline */}
       {period === "day" ? (
         <div className="grid gap-6 lg:grid-cols-12">
@@ -440,18 +468,11 @@ export default function TimeManagementPage() {
               </div>
             </div>
             <div className="rounded-[1.5rem] border border-line bg-surface p-4 shadow-card">
-              <h3 className="text-sm font-semibold text-ink">Telegram</h3>
-              <p className="mt-1 text-xs text-muted">Connect Telegram to get daily reports and check-in reminders.</p>
-              <div className="mt-3 flex gap-2">
-                <input
-                  value={telegramChatId}
-                  onChange={(e) => setTelegramChatId(e.target.value)}
-                  placeholder="Telegram chat_id"
-                  className="flex-1 rounded-xl border border-line bg-surface px-3 py-2 text-xs"
-                />
-                <button onClick={handleConnectTelegram} className="rounded-xl bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground">Connect</button>
+              <h3 className="text-sm font-semibold text-ink">Telegram check-ins</h3>
+              <p className="mt-1 text-xs text-muted">Link your bot and pick a check-in rhythm in Profile to get slot reminders on Telegram.</p>
+              <div className="mt-3">
+                <a href="/app/profile" className="inline-block rounded-xl bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground">Open Profile settings</a>
               </div>
-              {telegramStatus && <p className="mt-2 text-xs text-muted">{telegramStatus}</p>}
             </div>
           </div>
         </div>

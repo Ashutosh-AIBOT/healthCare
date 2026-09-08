@@ -58,6 +58,30 @@ def process_telegram_update(self, update: dict) -> dict:
         raise self.retry(exc=exc, countdown=30)
 
 
+@celery_app.task(name="app.tasks.telegram_tasks.run_checkin_tick")
+def run_checkin_tick() -> dict:
+    """Beat every 10 min: generate morning slots + send due check-ins."""
+    from app.db.session import AsyncSessionLocal
+    from app.services import telegram_service
+
+    async def _run_inner() -> dict:
+        async with AsyncSessionLocal() as db:
+            try:
+                sent = await telegram_service.send_due_checkins(db)
+                await db.commit()
+                return {"status": "ok", "sent": sent}
+            except Exception as exc:  # noqa: BLE001
+                await db.rollback()
+                logger.warning("run_checkin_tick failed: %s", type(exc).__name__)
+                return {"status": "error"}
+
+    try:
+        return _run(_run_inner())
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("run_checkin_tick failed: %s", type(exc).__name__)
+        return {"status": "error"}
+
+
 @celery_app.task(name="app.tasks.telegram_tasks.poll_telegram_once")
 def poll_telegram_once() -> dict:
     """Long-poll fallback: one getUpdates batch per linked integration.

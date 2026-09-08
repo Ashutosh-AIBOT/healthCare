@@ -448,26 +448,6 @@ export default function XomniPage() {
             New chat
           </Button>
 
-          <div className="relative">
-            <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-            <input
-              className="w-full bg-mist/50 border border-transparent rounded-xl pl-9 pr-8 py-2 text-[13px] outline-none focus:bg-surface focus:border-line/50 focus:ring-2 focus:ring-primary/10 transition-all text-ink placeholder:text-muted"
-              placeholder="Search"
-            />
-          </div>
-        </div>
-
-        {/* Nav links (Simulated) */}
-        <div className="px-4 pb-2 space-y-1 shrink-0">
-          <button className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-medium text-muted hover:text-ink hover:bg-mist/50 transition-colors">
-            <Sparkles className="h-4 w-4" /> Explore
-          </button>
-          <button className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-medium text-muted hover:text-ink hover:bg-mist/50 transition-colors">
-            <FileText className="h-4 w-4" /> Library
-          </button>
-          <button className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-medium text-ink bg-mist/50 transition-colors">
-            <History className="h-4 w-4 text-primary" /> History
-          </button>
         </div>
 
         {/* History List */}

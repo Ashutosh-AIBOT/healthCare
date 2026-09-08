@@ -4,6 +4,7 @@ import * as React from "react";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, EmptyState } from "@/components/ui/card";
+import { MedicalNote } from "@/components/learn/medical-note";
 import { apiClient } from "@/lib/auth-client";
 
 type Category = {
@@ -91,6 +92,8 @@ export default function LearnOverviewPage() {
       ) : (
         <EmptyState title="No categories yet" description="Check back soon for healthy eating and test guides." />
       )}
+
+      <MedicalNote />
     </div>
   );
 }

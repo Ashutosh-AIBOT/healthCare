@@ -4,6 +4,7 @@ import * as React from "react";
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { Card, CardContent, CardHeader, EmptyState } from "@/components/ui/card";
+import { MedicalNote } from "@/components/learn/medical-note";
 import { apiClient } from "@/lib/auth-client";
 
 type Test = {
@@ -78,7 +79,7 @@ export default function LearnTestDetailPage() {
               <CardHeader>
                 <p className="text-sm font-semibold text-ink">{test.name}</p>
                 {test.fasting_required && (
-                  <span className="mt-1 inline-block rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">Fasting required</span>
+                  <span className="mt-1 inline-block rounded-full bg-apricot/20 px-2 py-0.5 text-xs font-semibold text-apricot">Fasting required</span>
                 )}
               </CardHeader>
               <CardContent>
@@ -101,6 +102,8 @@ export default function LearnTestDetailPage() {
       ) : (
         <EmptyState title="No tests found" description="There are no tests listed for this body part yet." />
       )}
+
+      <MedicalNote />
     </div>
   );
 }

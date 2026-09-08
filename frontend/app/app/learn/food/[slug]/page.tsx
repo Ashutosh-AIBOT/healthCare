@@ -4,6 +4,8 @@ import * as React from "react";
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
+import { MedicalNote } from "@/components/learn/medical-note";
+import { NutritionTable } from "@/components/learn/nutrition-table";
 import { apiClient } from "@/lib/auth-client";
 
 type LearnItem = {
@@ -91,7 +93,9 @@ export default function LearnFoodDetailPage() {
         <Card>
           <CardContent className="p-6">
             <h3 className="text-sm font-semibold text-ink">Nutrition</h3>
-            <pre className="mt-2 text-xs text-muted">{JSON.stringify(item.nutrition, null, 2)}</pre>
+            <div className="mt-2">
+              <NutritionTable nutrition={item.nutrition} />
+            </div>
           </CardContent>
         </Card>
       )}
@@ -117,6 +121,8 @@ export default function LearnFoodDetailPage() {
           </CardContent>
         </Card>
       )}
+
+      <MedicalNote />
     </div>
   );
 }

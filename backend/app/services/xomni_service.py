@@ -94,7 +94,12 @@ def _get_mode_system_prompt(mode: str) -> str:
     elif mode == "timetable":
         return TIMETABLE_SYSTEM_PROMPT
     elif mode == "fitness":
-        return GENERAL_SYSTEM_PROMPT + "\n\nFocus on fitness, exercise, and sport nutrition topics."
+        return GENERAL_SYSTEM_PROMPT + """
+
+Focus on fitness, exercise, and sport nutrition topics. When the user asks to add a workout to their activity log, ask for confirmation and emit:
+{"action": "propose_fitness_activity", "activity_type": "walking", "duration_minutes": 30, "calories_burned": 120, "logged_date": "2026-09-09", "notes": "Easy recovery walk"}
+Never log an activity until the user confirms.
+"""
     elif mode == "reports":
         return GENERAL_SYSTEM_PROMPT + "\n\nFocus on interpreting lab report values and health metrics."
     else:
@@ -292,6 +297,31 @@ async def apply_pending_action(
             db.add(plan)
         await db.flush()
         result["affected"].append({"type": "meal_plan", "id": str(plan.id), "meal_type": meal_type})
+    elif action_name == "propose_fitness_activity":
+        from app.models.xomni import ActivityLog
+
+        activity_type = str(action.get("activity_type") or "other").strip()[:80]
+        duration = action.get("duration_minutes")
+        if not activity_type or not isinstance(duration, int) or duration <= 0 or duration >= 1440:
+            raise ValueError("The proposed fitness activity is invalid.")
+        logged_date = date.today()
+        if isinstance(action.get("logged_date"), str):
+            try:
+                logged_date = date.fromisoformat(action["logged_date"])
+            except ValueError:
+                pass
+        activity = ActivityLog(
+            user_id=user_id,
+            activity_type=activity_type,
+            duration_minutes=duration,
+            calories_burned=action.get("calories_burned") if isinstance(action.get("calories_burned"), int) else None,
+            distance_km=action.get("distance_km") if isinstance(action.get("distance_km"), (int, float)) else None,
+            notes=action.get("notes"),
+            logged_date=logged_date,
+        )
+        db.add(activity)
+        await db.flush()
+        result["affected"].append({"type": "fitness_activity", "id": str(activity.id), "logged_date": logged_date.isoformat()})
     else:
         raise ValueError("This Xomni action cannot be confirmed yet.")
 

@@ -190,21 +190,21 @@ export default function FoodPage() {
     );
   }
 
-  const targetCal = summary?.target_calories || 2150;
-  const curCal = summary?.calories || 1640;
-  const calPct = Math.min(100, Math.round((curCal / targetCal) * 100));
+  const targetCal = summary?.target_calories || 0;
+  const curCal = summary?.calories || 0;
+  const calPct = targetCal > 0 ? Math.min(100, Math.round((curCal / targetCal) * 100)) : 0;
 
-  const targetPro = summary?.target_protein_g || 120;
-  const curPro = summary?.protein_g || 94;
-  const proPct = Math.min(100, Math.round((curPro / targetPro) * 100));
+  const targetPro = summary?.target_protein_g || 0;
+  const curPro = summary?.protein_g || 0;
+  const proPct = targetPro > 0 ? Math.min(100, Math.round((curPro / targetPro) * 100)) : 0;
 
-  const targetCarb = summary?.target_carbs_g || 240;
-  const curCarb = summary?.carbs_g || 185;
-  const carbPct = Math.min(100, Math.round((curCarb / targetCarb) * 100));
+  const targetCarb = summary?.target_carbs_g || 0;
+  const curCarb = summary?.carbs_g || 0;
+  const carbPct = targetCarb > 0 ? Math.min(100, Math.round((curCarb / targetCarb) * 100)) : 0;
 
-  const targetFat = summary?.target_fat_g || 65;
-  const curFat = summary?.fat_g || 48;
-  const fatPct = Math.min(100, Math.round((curFat / targetFat) * 100));
+  const targetFat = summary?.target_fat_g || 0;
+  const curFat = summary?.fat_g || 0;
+  const fatPct = targetFat > 0 ? Math.min(100, Math.round((curFat / targetFat) * 100)) : 0;
 
   const meals = mealPlan?.plan_json || {};
 

@@ -90,15 +90,16 @@ function ProposalCard({ action, onAccept, onReject }: { action: any, onAccept: (
   if (!action || !action.action) return null;
   const isMealPlan = action.action === "propose_meal_plan";
   const isTodo = action.action === "propose_todo";
+  const isFitness = action.action === "propose_fitness_activity";
 
-  if (!isMealPlan && !isTodo) return null;
+  if (!isMealPlan && !isTodo && !isFitness) return null;
 
   return (
     <div className="mt-4 border border-primary/20 bg-primary-soft/30 rounded-xl p-4 shadow-sm w-full max-w-sm">
       <div className="flex items-center gap-2 mb-3">
         <Sparkles className="h-4 w-4 text-primary" />
         <h4 className="text-sm font-semibold text-ink">
-          {isMealPlan ? "Meal Plan Update Proposed" : "Schedule Update Proposed"}
+          {isMealPlan ? "Meal Plan Update Proposed" : isFitness ? "Workout Log Proposed" : "Schedule Update Proposed"}
         </h4>
       </div>
 
@@ -112,6 +113,12 @@ function ProposalCard({ action, onAccept, onReject }: { action: any, onAccept: (
           <div>
             <p className="font-medium text-ink">{action.title}</p>
             <p className="text-muted text-xs mt-1">Time: {action.start_hour}:00 - {action.end_hour}:00</p>
+          </div>
+        )}
+        {isFitness && (
+          <div>
+            <p className="font-medium text-ink">{action.activity_type}</p>
+            <p className="text-muted text-xs mt-1">{action.duration_minutes} minutes{action.calories_burned ? ` · ${action.calories_burned} kcal` : ""}</p>
           </div>
         )}
       </div>

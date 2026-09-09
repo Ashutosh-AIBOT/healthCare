@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from app.services.xomni_service import (
     _extract_action,
+    _hour_to_minute,
     _is_action_confirmation,
     _is_action_rejection,
 )
@@ -57,3 +58,10 @@ def test_xomni_action_contract_supports_update_without_accepting_unknown_ops() -
     )
     assert unsupported is None
     assert unchanged == 'I cannot do that {"action":"run_arbitrary_code","value":"x"}'
+
+
+def test_xomni_action_times_support_quarter_hours() -> None:
+    assert _hour_to_minute(14) == 840
+    assert _hour_to_minute(14.5) == 870
+    assert _hour_to_minute(14.25) == 855
+    assert _hour_to_minute(14.1) is None

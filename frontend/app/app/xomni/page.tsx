@@ -46,6 +46,14 @@ type Me = {
 
 type ChatMode = "general" | "food" | "timetable" | "reports" | "fitness";
 
+function formatActionHour(value: unknown) {
+  const minutes = Math.round(Number(value) * 60);
+  if (!Number.isFinite(minutes) || minutes < 0 || minutes > 1440) return "unspecified";
+  const hour = Math.floor(minutes / 60);
+  const minute = String(minutes % 60).padStart(2, "0");
+  return `${String(hour % 24 || 24).padStart(2, "0")}:${minute}`;
+}
+
 const MODE_META: Record<ChatMode, { label: string; icon: React.ReactNode; color: string; prompt: string }> = {
   general: { label: "General", icon: <Sparkles className="h-4 w-4" />, color: "text-text-primary", prompt: "Ask me anything..." },
   food: { label: "Food", icon: <Utensils className="h-4 w-4" />, color: "text-accent-teal", prompt: "Ask about food & nutrition..." },
@@ -116,7 +124,16 @@ function ProposalCard({ action, onAccept, onReject }: { action: any, onAccept: (
         {isTodo && (
           <div>
             <p className="font-medium text-ink">{action.title}</p>
-            <p className="text-muted text-xs mt-1">Time: {action.start_hour}:00 - {action.end_hour}:00</p>
+            <p className="text-muted text-xs mt-1">Time: {formatActionHour(action.start_hour)} - {formatActionHour(action.end_hour)}</p>
+          </div>
+        )}
+        {isTodoMutation && (
+          <div>
+            <p className="font-medium text-ink">{action.existing_title || action.title}</p>
+            <p className="text-muted text-xs mt-1">
+              {action.action === "complete_todo" ? "Mark this task as complete" : action.action === "delete_todo" ? "Remove this task" : `Change to ${action.title || "the requested details"}`}
+            </p>
+            {action.due_date && <p className="text-muted text-xs mt-1">Date: {action.due_date}</p>}
           </div>
         )}
         {isTodoMutation && (

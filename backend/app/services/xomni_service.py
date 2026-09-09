@@ -233,6 +233,16 @@ def _normalize_action(action: dict) -> dict | None:
     return normalized
 
 
+def _hour_to_minute(value: Any) -> int | None:
+    """Convert an action hour to a quarter-hour-aligned minute value."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    minutes = round(float(value) * 60)
+    if not 0 <= minutes <= 1440 or minutes % 15:
+        return None
+    return minutes
+
+
 async def _resolve_todo_for_action(db: AsyncSession, family_id: uuid.UUID, user_id: uuid.UUID, action: dict):
     """Resolve one owned todo, refusing ambiguous title-based mutations."""
     from app.models.time import Todo
@@ -349,12 +359,16 @@ async def apply_pending_action(
         block_id = None
         start_hour = action.get("start_hour")
         end_hour = action.get("end_hour")
-        if isinstance(start_hour, int) and isinstance(end_hour, int) and 0 <= start_hour < end_hour <= 24 and tt:
+        start_minute = _hour_to_minute(start_hour)
+        end_minute = _hour_to_minute(end_hour)
+        if (start_hour is not None or end_hour is not None) and (start_minute is None or end_minute is None or end_minute <= start_minute):
+            raise ValueError("Task times must be between 00:00 and 24:00 in 15-minute increments.")
+        if start_minute is not None and end_minute is not None and tt:
             block = TimeBlock(
                 timetable_id=tt.id,
                 title=title,
-                start_minute=start_hour * 60,
-                end_minute=end_hour * 60,
+                start_minute=start_minute,
+                end_minute=end_minute,
                 priority=action.get("priority") if action.get("priority") in {"normal", "important", "less"} else "normal",
                 description="Created by Xomni after user confirmation.",
             )
@@ -366,8 +380,6 @@ async def apply_pending_action(
             due = date.fromisoformat(due_date) if isinstance(due_date, str) else date.today()
         except ValueError:
             due = date.today()
-        start_minute = action.get("start_hour") * 60 if isinstance(action.get("start_hour"), int) else None
-        end_minute = action.get("end_hour") * 60 if isinstance(action.get("end_hour"), int) else None
         recurrence_rule = action.get("recurrence_rule") if action.get("recurrence_rule") in {"once", "daily", "weekdays", "weekly"} else "once"
         recurrence_until = None
         if isinstance(action.get("recurrence_until"), str):
@@ -414,16 +426,13 @@ async def apply_pending_action(
                         update_payload["due_date"] = date.fromisoformat(action["due_date"])
                     except ValueError as exc:
                         raise ValueError("That due date is invalid. Please use YYYY-MM-DD.") from exc
-                for key in ("start_hour", "end_hour"):
-                    if key in action and not isinstance(action[key], int):
-                        raise ValueError("Task times must be whole hours between 0 and 24.")
                 if "start_hour" in action or "end_hour" in action:
-                    start_hour = action.get("start_hour", (todo.start_minute or 0) // 60)
-                    end_hour = action.get("end_hour", (todo.end_minute or 0) // 60)
-                    if not (isinstance(start_hour, int) and isinstance(end_hour, int) and 0 <= start_hour < end_hour <= 24):
-                        raise ValueError("The updated task time is invalid.")
-                    update_payload["start_minute"] = start_hour * 60
-                    update_payload["end_minute"] = end_hour * 60
+                    start_minute = _hour_to_minute(action.get("start_hour", (todo.start_minute / 60) if todo.start_minute is not None else None))
+                    end_minute = _hour_to_minute(action.get("end_hour", (todo.end_minute / 60) if todo.end_minute is not None else None))
+                    if start_minute is None or end_minute is None or end_minute <= start_minute:
+                        raise ValueError("The updated task time must be in 15-minute increments and end after start.")
+                    update_payload["start_minute"] = start_minute
+                    update_payload["end_minute"] = end_minute
                 if action.get("priority") in {"normal", "important", "less"}:
                     update_payload["priority"] = action["priority"]
                 if not update_payload:

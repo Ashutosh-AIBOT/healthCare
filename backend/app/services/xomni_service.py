@@ -264,6 +264,58 @@ def _fallback_fitness_action(message: str) -> dict | None:
     }
 
 
+def _fallback_timetable_action(message: str) -> dict | None:
+    """Create a confirmation proposal for an explicit existing-task time edit."""
+    lowered = message.lower()
+    if not any(word in lowered for word in ("change", "update", "replace", "move")):
+        return None
+    if not any(word in lowered for word in ("todo", "task", "schedule")):
+        return None
+    time_match = re.search(r"(\d{1,2})(?::(\d{2}))?\s*(?:-|to)\s*(\d{1,2})(?::(\d{2}))?", lowered)
+    if not time_match:
+        return None
+    start_hour = int(time_match.group(1)) + int(time_match.group(2) or 0) / 60
+    end_hour = int(time_match.group(3)) + int(time_match.group(4) or 0) / 60
+    if _hour_to_minute(start_hour) is None or _hour_to_minute(end_hour) is None or end_hour <= start_hour:
+        return None
+
+    title_match = re.search(r"(?:titled|called)\s+[\"'“]?(.+?)[\"'”]?\s+(?:to|from)\s+\d", message, re.IGNORECASE)
+    if title_match is None:
+        title_match = re.search(r"(?:todo|task)\s+(.+?)\s+(?:to|from)\s+\d", message, re.IGNORECASE)
+    if title_match is None:
+        return None
+    title = title_match.group(1).strip(" \t\"'“”")
+    if not title:
+        return None
+    return {
+        "action": "update_todo",
+        "existing_title": title,
+        "existing_due_date": date.today().isoformat(),
+        "start_hour": start_hour,
+        "end_hour": end_hour,
+    }
+
+
+async def _get_timetable_context(db: AsyncSession, family_id: uuid.UUID | None, user_id: uuid.UUID) -> str:
+    """Give the timetable model exact user-owned task names for safe edits."""
+    if family_id is None:
+        return ""
+    try:
+        from app.services.time_service import time_service
+
+        todos = await time_service.list_todos(db, family_id, user_id)
+        if not todos:
+            return "No saved todos are currently available."
+        lines = ["Current saved todos (use exact title and date for edits):"]
+        for todo in todos[:50]:
+            start = f"{todo.start_minute // 60:02d}:{todo.start_minute % 60:02d}" if todo.start_minute is not None else "unscheduled"
+            end = f"{todo.end_minute // 60:02d}:{todo.end_minute % 60:02d}" if todo.end_minute is not None else "unscheduled"
+            lines.append(f"- {todo.title} | date={todo.due_date.isoformat()} | time={start}-{end} | status={todo.status}")
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
 async def _resolve_todo_for_action(db: AsyncSession, family_id: uuid.UUID, user_id: uuid.UUID, action: dict):
     """Resolve one owned todo, refusing ambiguous title-based mutations."""
     from app.models.time import Todo
@@ -738,12 +790,18 @@ User's nutrition profile:
 - Protein target: {nutrition_context.get('target_protein_g', 'unknown')}g/day
 """
 
+    timetable_text = ""
+    if mode == "timetable":
+        timetable_text = await _get_timetable_context(db, family_id, user_id)
+
     full_prompt = f"""{system_prompt}
 
 Retrieved context (cite the source labels when you use it):
 {retrieved.text}
 
 {nutrition_text}
+
+{timetable_text}
 
 {"--- Conversation History ---" if history_text else ""}
 {history_text}
@@ -776,6 +834,8 @@ XOMNI:"""
         answer_text, action = _extract_action(answer_text)
         if action is None and mode == "fitness":
             action = _fallback_fitness_action(message)
+        if action is None and mode == "timetable":
+            action = _fallback_timetable_action(message)
         if action:
             conv.pending_action = {"action": action}
             conv.pending_action_expires_at = datetime.now(UTC) + timedelta(minutes=15)

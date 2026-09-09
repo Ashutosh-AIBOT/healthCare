@@ -307,12 +307,24 @@ async def livekit_token(
     import os
     livekit_url = os.environ.get("LIVEKIT_URL", "")
 
+    try:
+        dispatch_id = await gateway.dispatch_voice_agent(
+            room_name=room,
+            metadata=metadata,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
     return {
         "token": token,
         "room_name": room,
         "livekit_url": livekit_url,
         "participant_identity": identity,
         "context": context_val,
+        "agent_dispatched": True,
+        "dispatch_id": dispatch_id,
     }
 
 

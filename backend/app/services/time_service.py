@@ -135,6 +135,10 @@ class TimeService:
             until = payload["due_date"] + timedelta(days=30)
         if until is not None and until < payload["due_date"]:
             raise AppError(code="VALIDATION_FAILED", status=422, detail="recurrence_until must be on or after due_date")
+        recurrence_days = payload.get("recurrence_days", [])
+        if rule == "weekly" and not recurrence_days:
+            recurrence_days = [(payload["due_date"].weekday() + 1) % 7]
+        payload = {**payload, "recurrence_until": until, "recurrence_days": recurrence_days}
         dates = [payload["due_date"]]
         if rule != "once":
             end_date = min(until, payload["due_date"] + timedelta(days=365))
@@ -142,7 +146,7 @@ class TimeService:
             cursor = payload["due_date"]
             while cursor <= end_date:
                 weekday = (cursor.weekday() + 1) % 7
-                matches = rule == "daily" or (rule == "weekdays" and cursor.weekday() < 5) or (rule == "weekly" and weekday in payload.get("recurrence_days", []))
+                matches = rule == "daily" or (rule == "weekdays" and cursor.weekday() < 5) or (rule == "weekly" and weekday in recurrence_days)
                 if matches:
                     dates.append(cursor)
                 cursor += timedelta(days=1)

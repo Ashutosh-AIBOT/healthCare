@@ -245,10 +245,10 @@ async def get_nutrition_summary(
     today = datetime.now(UTC).date()
     rows = (await db.execute(select(NutritionLog).where(NutritionLog.user_id == current_user.id, NutritionLog.logged_date == today))).scalars().all()
     profile = await nutrition_service.get_nutrition_profile(db, user_id=current_user.id)
-    target_cal = profile.get("tdee_calories", 2150) if profile else 2150
-    target_protein = profile.get("target_protein_g", 120) if profile else 120
-    target_carbs = profile.get("target_carbs_g", 240) if profile else 240
-    target_fat = profile.get("target_fat_g", 65) if profile else 65
+    target_cal = (profile.get("tdee_calories") or 0) if profile else 0
+    target_protein = (profile.get("target_protein_g") or 0) if profile else 0
+    target_carbs = (profile.get("target_carbs_g") or 0) if profile else 0
+    target_fat = (profile.get("target_fat_g") or 0) if profile else 0
 
     meals = [row for row in rows if row.entry_type == "meal"]
     calories = sum(row.calories for row in meals)

@@ -9,7 +9,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY agent.py groq_llm.py key_loader.py ./
 
-# HF Spaces expects HTTP on 7860 (health check); worker runs alongside.
+# Render/HF health check: $PORT is injected by Render; default 7860 elsewhere.
 EXPOSE 7860
 
-CMD ["sh", "-c", "python agent.py start & python -m http.server 7860"]
+CMD ["sh", "-c", "python agent.py start & python -m http.server ${PORT:-7860}"]

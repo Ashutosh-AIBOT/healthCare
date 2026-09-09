@@ -55,6 +55,10 @@ class NutritionLogRequest(BaseModel):
     notes: str | None = None
 
 
+class NutritionLogPatch(NutritionLogRequest):
+    entry_type: str | None = Field(default=None, pattern="^(meal|water)$")
+
+
 @router.post("/bmi", response_model=dict)
 async def calculate_bmi(
     payload: BMIRequest,
@@ -316,3 +320,16 @@ async def delete_nutrition_log(log_id: str, db: Annotated[AsyncSession, Depends(
         raise HTTPException(status_code=404, detail="Nutrition log not found")
     await db.delete(row)
     await db.commit()
+
+
+@router.patch("/logs/{log_id}", response_model=dict)
+async def update_nutrition_log(log_id: str, payload: NutritionLogPatch, db: Annotated[AsyncSession, Depends(get_db)], current_user: Annotated[User, Depends(get_current_user)]):
+    from app.models.xomni import NutritionLog
+    row = await db.scalar(select(NutritionLog).where(NutritionLog.id == log_id, NutritionLog.user_id == current_user.id))
+    if not row:
+        raise HTTPException(status_code=404, detail="Nutrition log not found")
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        if value is not None:
+            setattr(row, key, value)
+    await db.commit()
+    return {"id": str(row.id), "status": "updated"}

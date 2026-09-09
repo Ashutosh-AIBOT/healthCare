@@ -72,6 +72,7 @@ export default function FoodPage() {
 
   // Manual Add/Edit modal state
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null);
   const [editMealType, setEditMealType] = useState<"breakfast" | "lunch" | "snacks" | "dinner">("breakfast");
   const [editItemName, setEditItemName] = useState("");
   const [editCalories, setEditCalories] = useState(250);
@@ -125,14 +126,16 @@ export default function FoodPage() {
     const updatedPlan = { ...mealPlan.plan_json };
     const currentList = updatedPlan[editMealType] ? [...updatedPlan[editMealType]] : [];
     
-    currentList.push({
+    const nextItem = {
       name: editItemName.trim(),
       calories: Number(editCalories),
       protein: Number(editProtein),
       carbs: Number(editCarbs),
       fats: Number(editFats),
       created_by: "USER",
-    });
+    };
+    if (editingItemIndex === null) currentList.push(nextItem);
+    else currentList[editingItemIndex] = nextItem;
 
     updatedPlan[editMealType] = currentList;
 
@@ -148,9 +151,29 @@ export default function FoodPage() {
     setSaving(false);
     if (!res.error) {
       setIsEditOpen(false);
+      setEditingItemIndex(null);
       setEditItemName("");
       void loadData();
     }
+  };
+
+  const editMealItem = (mealType: typeof editMealType, item: MealItem, index: number) => {
+    setEditMealType(mealType);
+    setEditingItemIndex(index);
+    setEditItemName(item.name);
+    setEditCalories(item.calories);
+    setEditProtein(item.protein);
+    setEditCarbs(item.carbs);
+    setEditFats(item.fats);
+    setIsEditOpen(true);
+  };
+
+  const deleteMealItem = async (mealType: typeof editMealType, index: number) => {
+    if (!mealPlan) return;
+    const updatedPlan = { ...mealPlan.plan_json };
+    updatedPlan[mealType] = [...(updatedPlan[mealType] || [])].filter((_, itemIndex) => itemIndex !== index);
+    const res = await apiClient("/api/v1/nutrition/meal-plan/save", { method: "POST", body: JSON.stringify({ plan_json: updatedPlan, created_by: "USER", notes: `Removed item from ${mealType}` }) });
+    if (!res.error) void loadData();
   };
 
   if (loading) {
@@ -380,6 +403,8 @@ export default function FoodPage() {
                 <button
                   onClick={() => {
                     setEditMealType(mealKey);
+                    setEditingItemIndex(null);
+                    setEditItemName("");
                     setIsEditOpen(true);
                   }}
                   className="inline-flex items-center gap-1 rounded-full border border-line bg-mist/40 px-3 py-1 text-xs font-semibold text-ink hover:bg-mist transition"
@@ -394,6 +419,8 @@ export default function FoodPage() {
                   className="rounded-xl border border-dashed border-border p-6 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-surface-hover transition-colors duration-200"
                   onClick={() => {
                     setEditMealType(mealKey);
+                    setEditingItemIndex(null);
+                    setEditItemName("");
                     setIsEditOpen(true);
                   }}
                 >
@@ -426,13 +453,7 @@ export default function FoodPage() {
                         </p>
                       </div>
 
-                      <Link
-                        href={`/app/xomni?mode=food&prompt=Suggest a healthier swap for ${item.name} in my ${mealKey}`}
-                        className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-mist hover:text-primary transition"
-                        title="Swap with Xomni"
-                      >
-                        <ArrowRightLeft className="h-3.5 w-3.5" />
-                      </Link>
+                      <div className="flex items-center gap-1"><button onClick={() => editMealItem(mealKey, item, idx)} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-mist hover:text-ink transition" title="Edit meal item"><Edit3 className="h-3.5 w-3.5" /></button><button onClick={() => void deleteMealItem(mealKey, idx)} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-danger/10 hover:text-danger transition" title="Delete meal item"><X className="h-3.5 w-3.5" /></button><Link href={`/app/xomni?mode=food&prompt=Suggest a healthier swap for ${item.name} in my ${mealKey}`} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-mist hover:text-primary transition" title="Swap with Xomni"><ArrowRightLeft className="h-3.5 w-3.5" /></Link></div>
                     </div>
                   ))}
                 </div>

@@ -162,9 +162,8 @@ class TimeService:
         if not todo:
             raise AppError(code="NOT_FOUND", status=404, detail="Todo not found")
         for k, v in payload.items():
-            if v is not None:
-                setattr(todo, k, v)
-        if todo.start_minute is not None and (todo.end_minute is None or todo.end_minute <= todo.start_minute):
+            setattr(todo, k, v)
+        if (todo.start_minute is None) != (todo.end_minute is None) or (todo.start_minute is not None and todo.end_minute <= todo.start_minute):
             raise AppError(code="VALIDATION_FAILED", status=422, detail="todo end must be after start")
         await db.flush()
         return todo

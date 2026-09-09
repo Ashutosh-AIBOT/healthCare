@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from app.services.xomni_service import (
     _extract_action,
+    _fallback_fitness_action,
     _hour_to_minute,
     _is_action_confirmation,
     _is_action_rejection,
@@ -65,3 +66,15 @@ def test_xomni_action_times_support_quarter_hours() -> None:
     assert _hour_to_minute(14.5) == 870
     assert _hour_to_minute(14.25) == 855
     assert _hour_to_minute(14.1) is None
+
+
+def test_fitness_request_gets_confirmation_gated_fallback_action() -> None:
+    action = _fallback_fitness_action("Please log a 30 minute walking activity for today.")
+    assert action == {
+        "action": "propose_fitness_activity",
+        "activity_type": "walking",
+        "duration_minutes": 30,
+        "logged_date": date.today().isoformat(),
+        "notes": "Captured from the user's explicit Xomni activity request.",
+    }
+    assert _fallback_fitness_action("How many minutes should I walk?") is None

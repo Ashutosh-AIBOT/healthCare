@@ -243,6 +243,27 @@ def _hour_to_minute(value: Any) -> int | None:
     return minutes
 
 
+def _fallback_fitness_action(message: str) -> dict | None:
+    """Create a narrow proposal when the model misses the required action JSON."""
+    lowered = message.lower()
+    if not any(word in lowered for word in ("log", "record", "track", "add")):
+        return None
+    duration_match = re.search(r"(\d+)\s*(?:minute|minutes|min|mins)", lowered)
+    if not duration_match:
+        return None
+    duration = int(duration_match.group(1))
+    if not 1 <= duration < 1440:
+        return None
+    activity_type = "walking" if any(word in lowered for word in ("walk", "walking")) else "exercise"
+    return {
+        "action": "propose_fitness_activity",
+        "activity_type": activity_type,
+        "duration_minutes": duration,
+        "logged_date": date.today().isoformat(),
+        "notes": "Captured from the user's explicit Xomni activity request.",
+    }
+
+
 async def _resolve_todo_for_action(db: AsyncSession, family_id: uuid.UUID, user_id: uuid.UUID, action: dict):
     """Resolve one owned todo, refusing ambiguous title-based mutations."""
     from app.models.time import Todo
@@ -753,6 +774,8 @@ XOMNI:"""
     action = None
     if mode in ["timetable", "food", "general", "fitness", "reports"]:
         answer_text, action = _extract_action(answer_text)
+        if action is None and mode == "fitness":
+            action = _fallback_fitness_action(message)
         if action:
             conv.pending_action = {"action": action}
             conv.pending_action_expires_at = datetime.now(UTC) + timedelta(minutes=15)

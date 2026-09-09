@@ -136,15 +136,6 @@ function ProposalCard({ action, onAccept, onReject }: { action: any, onAccept: (
             {action.due_date && <p className="text-muted text-xs mt-1">Date: {action.due_date}</p>}
           </div>
         )}
-        {isTodoMutation && (
-          <div>
-            <p className="font-medium text-ink">{action.existing_title || action.title}</p>
-            <p className="text-muted text-xs mt-1">
-              {action.action === "complete_todo" ? "Mark this task as complete" : action.action === "delete_todo" ? "Remove this task" : `Change to ${action.title || "the requested details"}`}
-            </p>
-            {action.due_date && <p className="text-muted text-xs mt-1">Date: {action.due_date}</p>}
-          </div>
-        )}
         {isFitness && (
           <div>
             <p className="font-medium text-ink">{action.activity_type}</p>

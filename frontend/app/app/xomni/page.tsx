@@ -12,7 +12,7 @@ import {
 import { apiClient, getAccessToken, setAccessToken } from "@/lib/auth-client";
 import { VoiceTalkButton } from "@/components/app/voice-talk-button";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Radio } from "lucide-react";
 
@@ -27,6 +27,7 @@ interface Message {
   createdAt: Date;
   streaming?: boolean;
   action?: any;
+  citations?: Array<{ source: string; label: string; page?: number }>;
 }
 
 interface Conversation {
@@ -92,15 +93,16 @@ function ProposalCard({ action, onAccept, onReject }: { action: any, onAccept: (
   const isMealPlan = action.action === "propose_meal_plan";
   const isTodo = action.action === "propose_todo";
   const isFitness = action.action === "propose_fitness_activity";
+  const isPersonalContext = action.action === "propose_personal_context";
 
-  if (!isMealPlan && !isTodo && !isFitness) return null;
+  if (!isMealPlan && !isTodo && !isFitness && !isPersonalContext) return null;
 
   return (
     <div className="mt-4 border border-primary/20 bg-primary-soft/30 rounded-xl p-4 shadow-sm w-full max-w-sm">
       <div className="flex items-center gap-2 mb-3">
         <Sparkles className="h-4 w-4 text-primary" />
         <h4 className="text-sm font-semibold text-ink">
-          {isMealPlan ? "Meal Plan Update Proposed" : isFitness ? "Workout Log Proposed" : "Schedule Update Proposed"}
+          {isMealPlan ? "Meal Plan Update Proposed" : isFitness ? "Workout Log Proposed" : isPersonalContext ? "Personal Preference Proposed" : "Schedule Update Proposed"}
         </h4>
       </div>
 
@@ -122,10 +124,13 @@ function ProposalCard({ action, onAccept, onReject }: { action: any, onAccept: (
             <p className="text-muted text-xs mt-1">{action.duration_minutes} minutes{action.calories_burned ? ` · ${action.calories_burned} kcal` : ""}</p>
           </div>
         )}
+        {isPersonalContext && (
+          <pre className="whitespace-pre-wrap font-sans text-xs">{JSON.stringify(action.updates || {}, null, 2)}</pre>
+        )}
       </div>
 
       <div className="flex gap-2">
-        <Button onClick={onAccept} size="sm" className="w-full bg-primary hover:bg-primary/90 text-white shadow-sm">
+        <Button onClick={onAccept} size="sm" className="w-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm">
           Accept
         </Button>
         <Button onClick={onReject} size="sm" variant="outline" className="w-full">
@@ -138,6 +143,9 @@ function ProposalCard({ action, onAccept, onReject }: { action: any, onAccept: (
 
 export default function XomniPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const contextMemberId = searchParams.get("member_id");
+  const contextDocumentId = searchParams.get("document_id");
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
@@ -171,6 +179,11 @@ export default function XomniPage() {
 
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    const requestedMode = searchParams.get("mode") as ChatMode | null;
+    if (requestedMode && requestedMode in MODE_META) setMode(requestedMode);
+  }, [searchParams]);
 
   const loadConversations = async () => {
     const token = getAccessToken();
@@ -242,6 +255,8 @@ export default function XomniPage() {
             message: content,
             mode,
             conversation_id: activeConvId,
+            member_id: contextMemberId || undefined,
+            document_id: contextDocumentId || undefined,
             stream: true,
           }),
         });
@@ -285,6 +300,14 @@ export default function XomniPage() {
                   if (payload.conversation_id && payload.conversation_id !== activeConvId) {
                     setActiveConvId(payload.conversation_id);
                   }
+                  if (payload.citations) {
+                    setMessages((prev) => prev.map((m) => m.id === assistantId ? { ...m, citations: payload.citations } : m));
+                  }
+                  if (payload.applied) {
+                    window.dispatchEvent(new CustomEvent("aarogya:data-changed", {
+                      detail: { source: "xomni", action: "confirmed", applied: payload.applied },
+                    }));
+                  }
                 } else {
                   if (payload.token) {
                     fullText += payload.token;
@@ -322,7 +345,7 @@ export default function XomniPage() {
         setLoading(false);
       }
     },
-    [loading, mode, activeConvId, ttsEnabled]
+    [loading, mode, activeConvId, contextMemberId, contextDocumentId, ttsEnabled]
   );
 
   // ── Voice recording ──────────────────────────────────────────────────────
@@ -460,7 +483,7 @@ export default function XomniPage() {
         {/* Brand & New Chat */}
         <div className="p-4 space-y-4 shrink-0">
           <div className="flex items-center gap-2 px-1">
-            <div className="h-6 w-6 bg-gradient-to-br from-primary to-violet-600 rounded-md flex items-center justify-center text-white text-[10px] font-bold shadow-sm">
+            <div className="h-6 w-6 rounded-md bg-primary-soft text-primary flex items-center justify-center text-[10px] font-bold shadow-sm">
               X
             </div>
             <h2 className="font-semibold text-ink text-[15px] tracking-tight">Xomni</h2>
@@ -540,6 +563,11 @@ export default function XomniPage() {
                 </div>
               )}
             </div>
+            {(contextMemberId || contextDocumentId) && (
+              <span className="hidden sm:inline-flex items-center gap-1 rounded-lg bg-danger/10 px-2 py-1 text-[11px] font-medium text-danger">
+                <FileText className="h-3 w-3" /> Report context attached
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-3">
@@ -547,7 +575,7 @@ export default function XomniPage() {
               onClick={toggleVoice}
               className={cn(
                 "hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium rounded-lg shadow-sm transition-all",
-                voiceState === "recording" ? "bg-rose-500 text-white animate-pulse" : "bg-primary text-primary-foreground hover:bg-primary-hover"
+                voiceState === "recording" ? "bg-accent-water text-primary-foreground animate-pulse" : "bg-primary text-primary-foreground hover:brightness-95"
               )}
             >
               <Radio className={cn("h-3.5 w-3.5", voiceState === "recording" ? "animate-ping" : "animate-pulse")} />
@@ -575,8 +603,7 @@ export default function XomniPage() {
               // ── EMPTY STATE (Cortex Style) ──
               <div className="flex-1 flex flex-col items-center justify-center px-4 md:px-8 pb-12 w-full max-w-4xl mx-auto">
                 {/* Center Orb/Logo */}
-                <div className="h-24 w-24 rounded-full bg-gradient-to-br from-violet-300 via-primary/50 to-rose-200 blur-xl opacity-60 absolute top-1/4 -translate-y-1/2" />
-                <div className="relative z-10 h-16 w-16 rounded-full bg-gradient-to-br from-white to-primary-soft shadow-lg shadow-primary/10 flex items-center justify-center mb-6 border border-white/50">
+                <div className="relative z-10 h-16 w-16 rounded-xl bg-primary-soft flex items-center justify-center mb-6 border border-primary/20">
                   <Sparkles className="h-6 w-6 text-primary" />
                 </div>
 
@@ -600,8 +627,8 @@ export default function XomniPage() {
                       )}
                     >
                       {message.role === "assistant" && (
-                        <div className="h-8 w-8 shrink-0 rounded-full bg-gradient-to-br from-accent-teal to-accent-water flex items-center justify-center shadow-card ring-1 ring-border">
-                          <Sparkles className="h-4 w-4 text-white" />
+                        <div className="h-8 w-8 shrink-0 rounded-lg bg-primary-soft text-primary flex items-center justify-center shadow-card ring-1 ring-border">
+                          <Sparkles className="h-4 w-4" />
                         </div>
                       )}
                       <div
@@ -630,12 +657,17 @@ export default function XomniPage() {
                               }) : null}
                               {message.streaming && (
                                 <div className={cn("flex items-center", message.content ? "mt-2" : "mt-0")}>
-                                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-primary/15 to-violet-500/15 border border-primary/20 shadow-[0_0_15px_rgba(var(--primary),0.15)] relative overflow-hidden">
-                                    <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-[shimmer_2s_infinite] -skew-x-12" />
-                                    <span className="h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_8px_rgba(var(--primary),0.8)] animate-bounce" style={{ animationDuration: "800ms" }} />
-                                    <span className="h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_8px_rgba(var(--primary),0.8)] animate-bounce" style={{ animationDelay: "150ms", animationDuration: "800ms" }} />
-                                    <span className="h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_8px_rgba(var(--primary),0.8)] animate-bounce" style={{ animationDelay: "300ms", animationDuration: "800ms" }} />
+                                  <span className="inline-flex items-center gap-1.5 rounded-lg border border-primary/20 bg-primary-soft/60 px-3 py-1.5">
+                                    <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
+                                    <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse [animation-delay:150ms]" />
+                                    <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse [animation-delay:300ms]" />
                                   </span>
+                                </div>
+                              )}
+                              {!message.streaming && message.citations && message.citations.length > 0 && (
+                                <div className="mt-3 flex flex-wrap gap-1.5 border-t border-line/40 pt-2 text-[10px] text-muted">
+                                  <span className="font-semibold">Sources:</span>
+                                  {message.citations.slice(0, 6).map((citation, index) => <span key={`${citation.source}-${citation.label}-${index}`} className="rounded-full bg-mist px-2 py-0.5">{citation.label}{citation.page ? ` · p.${citation.page}` : ""}</span>)}
                                 </div>
                               )}
                             </div>
@@ -659,6 +691,11 @@ export default function XomniPage() {
                                     body: JSON.stringify({ conversation_id: activeConvId }),
                                   });
                                   if (!response.ok) throw new Error((await response.text()) || "Could not apply proposal.");
+                                  await loadConversation(activeConvId);
+                                  await loadConversations();
+                                  window.dispatchEvent(new CustomEvent("aarogya:data-changed", {
+                                    detail: { source: "xomni", action: "confirmed" },
+                                  }));
                                   // Add a system response back to chat
                                   setMessages(prev => [...prev, {
                                     id: `${Date.now()}-sys`,
@@ -727,12 +764,12 @@ export default function XomniPage() {
                 <div className="flex justify-center mb-3">
                   <div className={cn(
                     "text-[11px] rounded-full px-4 py-1.5 flex items-center gap-2 shadow-sm font-medium backdrop-blur",
-                    voiceState === "recording" ? "bg-rose-500/90 text-white animate-pulse" :
-                      voiceState === "transcribing" ? "bg-amber-100/90 text-amber-800 border border-amber-200" :
-                        "bg-critical/90 text-white"
+                    voiceState === "recording" ? "bg-accent-water text-primary-foreground animate-pulse" :
+                      voiceState === "transcribing" ? "bg-primary-soft text-primary border border-primary/20" :
+                        "bg-critical text-primary-foreground"
                   )}>
                     {voiceState === "recording" && <><Mic className="h-3 w-3" /> Recording… tap mic to stop</>}
-                    {voiceState === "transcribing" && <><span className="h-3 w-3 animate-spin rounded-full border-2 border-amber-600 border-t-transparent" /> Transcribing…</>}
+                    {voiceState === "transcribing" && <><span className="h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent" /> Transcribing…</>}
                     {voiceError && voiceError}
                   </div>
                 </div>
@@ -740,7 +777,7 @@ export default function XomniPage() {
 
               <div className={cn(
                 "bg-surface border border-border shadow-sm rounded-[1.25rem] p-1.5 flex items-end gap-1 sm:gap-2 relative focus-within:ring-2 focus-within:ring-primary focus-within:border-primary transition-all",
-                voiceState === "recording" && "ring-2 ring-rose-500/30 border-rose-500/50 shadow-[0_0_20px_rgba(244,63,94,0.15)]"
+                voiceState === "recording" && "ring-2 ring-accent-water/30 border-accent-water/50"
               )}>
                 <button className="h-10 w-10 shrink-0 rounded-full flex items-center justify-center text-muted hover:bg-mist hover:text-ink transition-colors mb-0.5" title="Attach file">
                   <Link2 className="h-4 w-4" />
@@ -765,7 +802,7 @@ export default function XomniPage() {
                     className={cn(
                       "h-10 w-10 shrink-0 rounded-full flex items-center justify-center transition-all",
                       voiceState === "recording"
-                        ? "bg-rose-500 text-white shadow-[0_0_15px_rgba(244,63,94,0.4)] animate-pulse"
+                        ? "bg-accent-water text-primary-foreground animate-pulse"
                         : "bg-primary/10 text-primary hover:bg-primary/20"
                     )}
                     title={voiceState === "recording" ? "Stop Voice Talk" : "Start Voice Talk"}

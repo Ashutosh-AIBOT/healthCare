@@ -7,8 +7,9 @@ so the catalog never leaks to anonymous crawlers beyond the public site.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -29,6 +30,17 @@ class LearnCategory(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     items: Mapped[list["LearnItem"]] = relationship(back_populates="category", cascade="all, delete-orphan", order_by="LearnItem.sort_order")
 
 
+class LearnSource(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "learn_sources"
+
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    url: Mapped[str] = mapped_column(String(500), nullable=False)
+    license: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    version: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    retrieved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
+
+
 class LearnItem(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "learn_items"
 
@@ -42,6 +54,7 @@ class LearnItem(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     benefits: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     healthy_role: Mapped[str | None] = mapped_column(Text, nullable=True)
     embedding: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    source_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("learn_sources.id", ondelete="SET NULL"), nullable=True, index=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     category: Mapped["LearnCategory"] = relationship(back_populates="items")
@@ -67,6 +80,7 @@ class BodyTest(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     prep_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     fasting_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     embedding: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    source_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("learn_sources.id", ondelete="SET NULL"), nullable=True, index=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     body_part: Mapped["TestBodyPart"] = relationship(back_populates="tests")

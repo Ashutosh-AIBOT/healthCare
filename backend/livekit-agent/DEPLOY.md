@@ -11,7 +11,7 @@ Worker entrypoint: `python agent.py start` (LiveKit Agents job worker, outbound 
   - `Dockerfile` installs `supervisor`, copies `supervisord.conf` + `start.sh`, `CMD ["./start.sh"]`.
   - `start.sh` launches supervisor, supervisor launches worker: `python agent.py start` (autorestart, stderr→stdout).
   - Keep this shape: Spaces expects a long-running process; supervisor keeps the agent alive and surfaces logs in the Space Logs tab.
-- Space files (in `backend/livekit-agent/`): `Dockerfile`, `start.sh`, `supervisord.conf`, `agent.py`, `requirements.txt`, `README.md` (with `sdk: docker` front-matter).
+- Space files (in `backend/livekit-agent/`): `Dockerfile`, `agent.py`, `groq_llm.py`, `key_loader.py`, `requirements.txt`, `README.md` (with `sdk: docker` front-matter). The `Dockerfile` runs the worker in the foreground (`exec python agent.py start`) with only a background `$PORT` health server — this matches the current file, no `supervisord`/`start.sh` needed.
 - Secrets: Space Settings → Variables and secrets. Required names:
   - `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`
   - `DATABASE_URL`, `SECRET_KEY`

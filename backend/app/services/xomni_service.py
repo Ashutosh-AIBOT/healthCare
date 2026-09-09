@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+import re
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -12,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.gateway import LLMGateway
 from app.ai import guardrails, triage
+from app.ai.chat_context import build_chat_context
 from app.models.xomni import XomniConversation, XomniMessage
 from app.models.learn import LearnCategory, LearnItem  # type: ignore[attr-defined]
 
@@ -68,6 +70,10 @@ You are Xomni, a smart health and wellness AI assistant. You help users with:
 - Fitness guidance and activity tracking
 - BMI calculation and dietary planning
 
+When a user shares a durable preference, habit, goal, dislike, dietary restriction, or communication preference that would improve future advice, do not save it silently. Ask for confirmation and emit:
+{"action": "propose_personal_context", "updates": {"likes": ["..."], "dislikes": ["..."], "habits": ["..."], "goals": ["..."], "dietary_restrictions": ["..."]}}
+Only include categories supported by the user's statement. Never store a medical diagnosis or sensitive fact as a preference without explicit confirmation.
+
 Be conversational, helpful, and always recommend professional medical advice for medical issues.
 """
 
@@ -79,10 +85,16 @@ Guidelines:
    - Respond with a JSON action block. Include recurrence_rule (once, daily, weekdays, or weekly) only when requested, and recurrence_until/recurrence_days when needed:
      {"action": "propose_todo", "title": "Evening Cardio", "start_hour": 17, "end_hour": 18, "priority": "important", "recurrence_rule": "once", "created_by": "XOMNI"}
 2. When users ask to complete or check off a task:
-   - Respond with: {"action": "complete_block", "title": "...", "start_hour": 10}
-3. When users ask about their 3 timetable templates (Productive Day, Backup Day, Holiday Day):
+   - Respond with: {"action": "complete_todo", "existing_title": "...", "due_date": "YYYY-MM-DD"}
+3. When users ask to change an existing task, never create a duplicate. Ask for permission first and emit:
+   {"action": "update_todo", "existing_title": "...", "existing_due_date": "YYYY-MM-DD", "title": "New title", "start_hour": 14, "end_hour": 16, "due_date": "YYYY-MM-DD", "priority": "normal"}
+   Include only fields the user asked to change. Use the exact existing title when it is known; if it is ambiguous, ask a clarification question instead of proposing an update.
+4. When users ask to remove a task, ask for permission first and emit:
+   {"action": "delete_todo", "existing_title": "...", "due_date": "YYYY-MM-DD"}
+   Never delete a task without the confirmation step.
+5. When users ask about their 3 timetable templates (Productive Day, Backup Day, Holiday Day):
    - Explain the structure of each template and how their daily adherence score is calculated.
-4. All tasks proposed by you will be tagged with `created_by: 'XOMNI'` so users always know AI proposed it, while tasks they create themselves are tagged as manual.
+6. All tasks proposed by you will be tagged with `created_by: 'XOMNI'` so users always know AI proposed it, while tasks they create themselves are tagged as manual.
 """
 
 
@@ -183,10 +195,113 @@ def _extract_action(answer_text: str) -> tuple[str, dict | None]:
         except _json.JSONDecodeError:
             cursor = start + 1
             continue
-        if isinstance(candidate, dict) and candidate.get("action"):
+        if isinstance(candidate, dict) and _normalize_action(candidate):
             clean = (answer_text[:start] + answer_text[start + end:]).strip()
-            return clean, candidate
+            return clean, _normalize_action(candidate)
         cursor = start + 1
+
+
+_SUPPORTED_ACTIONS = {
+    "propose_todo",
+    "update_todo",
+    "complete_todo",
+    "delete_todo",
+    "propose_meal_plan",
+    "propose_fitness_activity",
+    "propose_personal_context",
+}
+
+
+def _normalize_action(action: dict) -> dict | None:
+    """Accept only the small, server-owned action contract.
+
+    The model can suggest JSON, but it must not invent an executable operation
+    or push unbounded text into the pending-action column.
+    """
+    name = action.get("action")
+    if name not in _SUPPORTED_ACTIONS:
+        return None
+    normalized = {key: value for key, value in action.items() if key != "action"}
+    normalized["action"] = name
+    for key in ("title", "existing_title", "description", "notes", "activity_type"):
+        if key in normalized and normalized[key] is not None:
+            if not isinstance(normalized[key], str) or len(normalized[key].strip()) > 500:
+                return None
+            normalized[key] = normalized[key].strip()
+    if name in {"update_todo", "complete_todo", "delete_todo"} and not normalized.get("existing_title") and not normalized.get("todo_id"):
+        return None
+    return normalized
+
+
+async def _resolve_todo_for_action(db: AsyncSession, family_id: uuid.UUID, user_id: uuid.UUID, action: dict):
+    """Resolve one owned todo, refusing ambiguous title-based mutations."""
+    from app.models.time import Todo
+
+    todo_id = action.get("todo_id")
+    if todo_id:
+        try:
+            todo = await db.scalar(select(Todo).where(
+                Todo.id == uuid.UUID(str(todo_id)),
+                Todo.family_id == family_id,
+                Todo.user_id == user_id,
+            ))
+        except (ValueError, AttributeError):
+            todo = None
+        if todo is None:
+            raise ValueError("I could not find that todo. Please tell me its exact title.")
+        return todo
+
+    title = str(action.get("existing_title") or "").strip().casefold()
+    todos = await db.scalars(select(Todo).where(
+        Todo.family_id == family_id,
+        Todo.user_id == user_id,
+    ).order_by(Todo.due_date, Todo.created_at))
+    matches = [todo for todo in todos if todo.title.strip().casefold() == title]
+    due_date = action.get("existing_due_date")
+    if due_date is None and action.get("action") != "update_todo":
+        due_date = action.get("due_date")
+    if isinstance(due_date, str):
+        try:
+            requested_date = date.fromisoformat(due_date)
+            matches = [todo for todo in matches if todo.due_date == requested_date]
+        except ValueError:
+            raise ValueError("That due date is invalid. Please use YYYY-MM-DD.")
+    if not matches:
+        raise ValueError("I could not find that todo. Please tell me its exact title and date.")
+    if len(matches) > 1:
+        raise ValueError("I found more than one todo with that title. Please include its date.")
+    return matches[0]
+
+
+def _is_action_confirmation(message: str) -> bool:
+    """Recognize explicit confirmation replies across chat, voice, and Telegram."""
+    normalized = " ".join(re.sub(r"[^a-z0-9\s]", "", message.lower()).split())
+    return normalized in {
+        "yes", "y", "confirm", "confirmed", "approve", "approved",
+        "yes update", "yes add", "yes replace", "do it", "go ahead",
+    } or normalized.startswith(("yes ", "confirm ", "approve "))
+
+
+def _is_action_rejection(message: str) -> bool:
+    normalized = " ".join(re.sub(r"[^a-z0-9\s]", "", message.lower()).split())
+    return normalized in {
+        "no", "n", "reject", "rejected", "cancel", "cancelled", "don't",
+        "do not", "leave it", "leave it unchanged",
+    } or normalized.startswith(("no ", "reject ", "cancel "))
+
+
+def _action_confirmation_text(result: dict[str, Any]) -> str:
+    """Return a channel-neutral confirmation message after a committed action."""
+    types = {item.get("type") for item in result.get("affected", [])}
+    if "todo" in types:
+        return "Done. I updated your todo and timetable."
+    if "meal_plan" in types:
+        return "Done. I updated your food plan."
+    if "fitness_activity" in types:
+        return "Done. I updated your fitness activity."
+    if "personal_context" in types:
+        return "Done. I saved that preference for future recommendations."
+    return "Done. I applied the approved update."
 
 
 async def apply_pending_action(
@@ -203,7 +318,7 @@ async def apply_pending_action(
     conv = await db.scalar(select(XomniConversation).where(
         XomniConversation.id == conversation_id,
         XomniConversation.user_id == user_id,
-    ))
+    ).with_for_update())
     if not conv or not conv.pending_action:
         raise ValueError("There is no pending Xomni action to confirm.")
     if conv.pending_action_expires_at and conv.pending_action_expires_at < datetime.now(UTC):
@@ -216,6 +331,9 @@ async def apply_pending_action(
     if not isinstance(action, dict):
         raise ValueError("The pending Xomni action is invalid.")
 
+    action = _normalize_action(action)
+    if action is None:
+        raise ValueError("The pending Xomni action is invalid or unsupported.")
     action_name = action.get("action")
     result: dict[str, Any] = {"action": action_name, "affected": []}
     if action_name == "propose_todo":
@@ -273,6 +391,46 @@ async def apply_pending_action(
         result["affected"].append({"type": "todo", "id": str(todo.id), "due_date": due.isoformat()})
         if block_id:
             result["affected"].append({"type": "time_block", "id": str(block_id)})
+    elif action_name in {"update_todo", "complete_todo", "delete_todo"}:
+        todo = await _resolve_todo_for_action(db, family_id, user_id, action)
+        if action_name == "delete_todo":
+            todo_id = todo.id
+            await time_service.delete_todo(db, family_id, user_id, todo_id)
+            result["affected"].append({"type": "todo", "id": str(todo_id), "operation": "deleted"})
+        else:
+            if action_name == "complete_todo":
+                await time_service.update_todo(
+                    db, family_id, user_id, todo.id, {"status": "done"}
+                )
+                operation = "completed"
+            else:
+                update_payload: dict[str, Any] = {}
+                if isinstance(action.get("title"), str) and action["title"].strip():
+                    update_payload["title"] = action["title"].strip()
+                if isinstance(action.get("description"), str):
+                    update_payload["description"] = action["description"].strip()
+                if isinstance(action.get("due_date"), str):
+                    try:
+                        update_payload["due_date"] = date.fromisoformat(action["due_date"])
+                    except ValueError as exc:
+                        raise ValueError("That due date is invalid. Please use YYYY-MM-DD.") from exc
+                for key in ("start_hour", "end_hour"):
+                    if key in action and not isinstance(action[key], int):
+                        raise ValueError("Task times must be whole hours between 0 and 24.")
+                if "start_hour" in action or "end_hour" in action:
+                    start_hour = action.get("start_hour", (todo.start_minute or 0) // 60)
+                    end_hour = action.get("end_hour", (todo.end_minute or 0) // 60)
+                    if not (isinstance(start_hour, int) and isinstance(end_hour, int) and 0 <= start_hour < end_hour <= 24):
+                        raise ValueError("The updated task time is invalid.")
+                    update_payload["start_minute"] = start_hour * 60
+                    update_payload["end_minute"] = end_hour * 60
+                if action.get("priority") in {"normal", "important", "less"}:
+                    update_payload["priority"] = action["priority"]
+                if not update_payload:
+                    raise ValueError("Tell me what should change in that todo.")
+                await time_service.update_todo(db, family_id, user_id, todo.id, update_payload)
+                operation = "updated"
+            result["affected"].append({"type": "todo", "id": str(todo.id), "operation": operation})
     elif action_name == "propose_meal_plan":
         from app.models.xomni import MealPlan
 
@@ -322,6 +480,23 @@ async def apply_pending_action(
         db.add(activity)
         await db.flush()
         result["affected"].append({"type": "fitness_activity", "id": str(activity.id), "logged_date": logged_date.isoformat()})
+    elif action_name == "propose_personal_context":
+        from app.models.rag_context import UserPersonalContext
+
+        allowed = {"habits", "likes", "dislikes", "goals", "dietary_restrictions", "communication_preferences"}
+        updates = action.get("updates")
+        if not isinstance(updates, dict) or not updates or set(updates) - allowed:
+            raise ValueError("The proposed personal context is invalid.")
+        row = await db.scalar(select(UserPersonalContext).where(UserPersonalContext.user_id == user_id))
+        if row is None:
+            row = UserPersonalContext(user_id=user_id, family_id=family_id, context_json=updates, source="XOMNI_CONFIRMED")
+            db.add(row)
+        else:
+            row.context_json = {**(row.context_json or {}), **updates}
+            row.family_id = family_id
+            row.source = "XOMNI_CONFIRMED"
+        await db.flush()
+        result["affected"].append({"type": "personal_context", "id": str(row.id), "fields": sorted(updates)})
     else:
         raise ValueError("This Xomni action cannot be confirmed yet.")
 
@@ -391,6 +566,9 @@ async def chat(
     conversation_id: uuid.UUID | None = None,
     user_prompt_prefix: str | None = None,
     nutrition_context: dict | None = None,
+    family_id: uuid.UUID | None = None,
+    member_id: uuid.UUID | None = None,
+    document_id: uuid.UUID | None = None,
 ) -> dict[str, Any]:
     """
     Main Xomni chat function.
@@ -426,19 +604,87 @@ async def chat(
     db.add(user_msg)
     await db.flush()
 
+    # Keep confirmation behavior identical for website text, browser voice
+    # transcripts, and Telegram. The mutation still happens only after the
+    # explicit confirmation and is committed by the request transaction.
+    if family_id is not None and conv.pending_action:
+        if _is_action_confirmation(message):
+            try:
+                applied = await apply_pending_action(
+                    db,
+                    user_id=user_id,
+                    family_id=family_id,
+                    conversation_id=conv.id,
+                )
+                answer_text = _action_confirmation_text(applied)
+                db.add(XomniMessage(
+                    conversation_id=conv.id,
+                    role="assistant",
+                    content=answer_text,
+                    provider_used="system",
+                ))
+                await db.flush()
+                return {
+                    "answer": answer_text,
+                    "conversation_id": str(conv.id),
+                    "message_id": None,
+                    "citations": [],
+                    "emergency": False,
+                    "action": None,
+                    "applied": applied,
+                }
+            except ValueError as exc:
+                answer_text = str(exc)
+                db.add(XomniMessage(
+                    conversation_id=conv.id,
+                    role="assistant",
+                    content=answer_text,
+                    provider_used="system",
+                ))
+                await db.flush()
+                return {
+                    "answer": answer_text,
+                    "conversation_id": str(conv.id),
+                    "message_id": None,
+                    "citations": [],
+                    "emergency": False,
+                    "action": None,
+                }
+        if _is_action_rejection(message):
+            conv.pending_action = None
+            conv.pending_action_expires_at = None
+            answer_text = "Okay. I left your plan unchanged."
+            db.add(XomniMessage(
+                conversation_id=conv.id,
+                role="assistant",
+                content=answer_text,
+                provider_used="system",
+            ))
+            await db.flush()
+            return {
+                "answer": answer_text,
+                "conversation_id": str(conv.id),
+                "message_id": None,
+                "citations": [],
+                "emergency": False,
+                "action": None,
+            }
+
     # Get conversation history for context
     history = await _get_conversation_history(db, conv.id, limit=6)
 
-    # Get learn context (RAG over food/test DB)
-    learn_context = await _get_learn_context(db, message)
+    # Retrieve global Learn knowledge, confirmed personal context, and scoped reports.
+    retrieved = await build_chat_context(
+        db,
+        user_id=user_id,
+        family_id=family_id,
+        question=message,
+        member_id=member_id,
+        document_id=document_id,
+    )
 
     # Pick system prompt by mode
-    if mode == "food":
-        system_prompt = FOOD_SYSTEM_PROMPT
-    elif mode == "timetable":
-        system_prompt = TIMETABLE_SYSTEM_PROMPT
-    else:
-        system_prompt = GENERAL_SYSTEM_PROMPT
+    system_prompt = _get_mode_system_prompt(mode)
 
     # Inject user restrictions if set
     if conv.user_prompt_prefix:
@@ -464,7 +710,8 @@ User's nutrition profile:
 
     full_prompt = f"""{system_prompt}
 
-{learn_context}
+Retrieved context (cite the source labels when you use it):
+{retrieved.text}
 
 {nutrition_text}
 
@@ -495,7 +742,7 @@ XOMNI:"""
 
     # Detect and persist actions so confirmation is server-owned and resumable.
     action = None
-    if mode in ["timetable", "food", "general"]:
+    if mode in ["timetable", "food", "general", "fitness", "reports"]:
         answer_text, action = _extract_action(answer_text)
         if action:
             conv.pending_action = {"action": action}
@@ -520,7 +767,7 @@ XOMNI:"""
         "answer": answer_text,
         "conversation_id": str(conv.id),
         "message_id": str(ai_msg.id),
-        "citations": [],
+        "citations": retrieved.citations,
         "emergency": False,
         "action": action,
     }

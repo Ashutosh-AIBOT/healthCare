@@ -52,7 +52,7 @@ export default function HomePage() {
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(orgJsonLd) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }} />
       <SiteNav />
-      <main>
+      <main id="main-content">
         <section className="relative isolate min-h-[92dvh] overflow-hidden bg-home-dark">
           <div className="mx-auto grid min-h-[92dvh] max-w-7xl items-center gap-14 px-5 pb-20 pt-32 md:grid-cols-[0.9fr_1.1fr] md:gap-16 md:px-8 md:pb-24 md:pt-24">
             <div>
@@ -85,7 +85,6 @@ export default function HomePage() {
             </div>
 
             <div className="relative animate-home-rise [animation-delay:180ms]" aria-label="Aarogya report explanation preview">
-              <div className="absolute -inset-6 rounded-[2rem] border border-home-gold/10 bg-home-gold/[0.03] blur-2xl" />
               <div className="relative overflow-hidden rounded-[1.5rem] border border-home-border bg-home-surface shadow-lift">
                 <div className="flex items-center justify-between border-b border-home-border px-5 py-4">
                   <div className="flex items-center gap-2 text-sm font-semibold text-home-primary-dark">

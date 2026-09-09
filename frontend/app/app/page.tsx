@@ -151,7 +151,7 @@ export default function AppHomePage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Calories Consumed"
-          value={`${nutrition?.calories ?? 1640} / ${nutrition?.target_calories ?? 2150}`}
+          value={`${nutrition?.calories ?? 0} / ${nutrition?.target_calories ?? 0}`}
           trend={`${caloriePct}% of daily budget`}
           color="teal"
           icon={<Flame className="h-[18px] w-[18px]" />}
@@ -175,11 +175,11 @@ export default function AppHomePage() {
         />
         <StatCard
           label="Water Intake"
-          value={`${nutrition?.water_ml ?? 2400} ml`}
-          trend={`${Math.round(((nutrition?.water_ml ?? 2400) / (nutrition?.water_target_ml ?? 3000)) * 100)}% of goal`}
+          value={`${nutrition?.water_ml ?? 0} ml`}
+          trend={`${Math.round(((nutrition?.water_ml ?? 0) / (nutrition?.water_target_ml ?? 3000)) * 100)}% of goal`}
           color="blue"
           icon={<Droplets className="h-[18px] w-[18px]" />}
-          progress={Math.round(((nutrition?.water_ml ?? 2400) / (nutrition?.water_target_ml ?? 3000)) * 100) || 80}
+          progress={Math.min(100, Math.round(((nutrition?.water_ml ?? 0) / (nutrition?.water_target_ml ?? 3000)) * 100))}
         />
       </div>
 

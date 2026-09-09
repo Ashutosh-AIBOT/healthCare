@@ -126,6 +126,22 @@ class MealPlanHistory(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     valid_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class NutritionLog(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "nutrition_logs"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    logged_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    entry_type: Mapped[str] = mapped_column(String(20), nullable=False)  # meal | water
+    meal_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    item_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    calories: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    protein_g: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    carbs_g: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    fat_g: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    water_ml: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 # ---------------------------------------------------------------------------
 # Fitness
 # ---------------------------------------------------------------------------

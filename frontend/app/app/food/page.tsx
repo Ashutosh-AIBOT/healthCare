@@ -80,6 +80,14 @@ export default function FoodPage() {
   const [editFats, setEditFats] = useState(7);
   const [saving, setSaving] = useState(false);
 
+  const handleLogWater = async () => {
+    const res = await apiClient("/api/v1/nutrition/logs", {
+      method: "POST",
+      body: JSON.stringify({ entry_type: "water", water_ml: 250 }),
+    });
+    if (!res.error) void loadData();
+  };
+
   const loadData = useCallback(async () => {
     setError(null);
     try {
@@ -302,6 +310,16 @@ export default function FoodPage() {
             <div className="h-full rounded-full bg-danger transition-all duration-300" style={{ width: `${fatPct}%` }} />
           </div>
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-accent-water/20 bg-accent-water/5 p-4">
+        <div>
+          <p className="text-sm font-semibold text-text-primary">Water today: {summary?.water_ml ?? 0} ml</p>
+          <p className="text-xs text-text-secondary">Log a 250 ml serving or manage entries from your daily record.</p>
+        </div>
+        <button onClick={() => void handleLogWater()} className="inline-flex items-center gap-2 rounded-full bg-accent-water px-4 py-2 text-xs font-semibold text-white hover:opacity-90">
+          + 250 ml water
+        </button>
       </div>
 
       {/* History Drawer / Panel (if toggled) */}

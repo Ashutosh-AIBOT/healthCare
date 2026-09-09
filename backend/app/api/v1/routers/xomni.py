@@ -378,13 +378,10 @@ async def timetable_action(
     if current_user.family_id is None:
         raise HTTPException(status_code=400, detail="Join a family first to use timetable features.")
 
-    result = await points_service.parse_xomni_timetable_intent(
-        db,
-        user_id=current_user.id,
-        message=payload.message,
-        family_id=current_user.family_id,
+    raise HTTPException(
+        status_code=409,
+        detail="Use the Xomni chat to receive a preview and confirm timetable changes. Direct timetable actions are disabled.",
     )
-    return result
 
 
 # ─────────────────────────── Points ─────────────────────────────────────────

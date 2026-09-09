@@ -76,8 +76,8 @@ You are Xomni with timetable, schedule, and todo management capabilities.
 Guidelines:
 1. When users ask you to schedule or add tasks (e.g., "Add cardio at 5pm", "Add grocery shopping tomorrow"):
    - NEVER silently add it. Ask for permission first: "Shall I add this to your schedule?"
-   - Respond with a JSON action block:
-     {"action": "propose_todo", "title": "Evening Cardio", "start_hour": 17, "end_hour": 18, "priority": "important", "created_by": "XOMNI"}
+   - Respond with a JSON action block. Include recurrence_rule (once, daily, weekdays, or weekly) only when requested, and recurrence_until/recurrence_days when needed:
+     {"action": "propose_todo", "title": "Evening Cardio", "start_hour": 17, "end_hour": 18, "priority": "important", "recurrence_rule": "once", "created_by": "XOMNI"}
 2. When users ask to complete or check off a task:
    - Respond with: {"action": "complete_block", "title": "...", "start_hour": 10}
 3. When users ask about their 3 timetable templates (Productive Day, Backup Day, Holiday Day):
@@ -243,18 +243,28 @@ async def apply_pending_action(
             due = date.fromisoformat(due_date) if isinstance(due_date, str) else date.today()
         except ValueError:
             due = date.today()
-        todo = Todo(
-            family_id=family_id,
-            user_id=user_id,
-            title=title,
-            description=action.get("description"),
-            due_date=due,
-            priority=action.get("priority") if action.get("priority") in {"normal", "important", "less"} else "normal",
-            created_by="XOMNI",
-            timetable_block_id=block_id,
-        )
-        db.add(todo)
-        await db.flush()
+        start_minute = action.get("start_hour") * 60 if isinstance(action.get("start_hour"), int) else None
+        end_minute = action.get("end_hour") * 60 if isinstance(action.get("end_hour"), int) else None
+        recurrence_rule = action.get("recurrence_rule") if action.get("recurrence_rule") in {"once", "daily", "weekdays", "weekly"} else "once"
+        recurrence_until = None
+        if isinstance(action.get("recurrence_until"), str):
+            try:
+                recurrence_until = date.fromisoformat(action["recurrence_until"])
+            except ValueError:
+                recurrence_until = None
+        todo = await time_service.create_todo(db, family_id, user_id, {
+            "title": title,
+            "description": action.get("description"),
+            "due_date": due,
+            "priority": action.get("priority") if action.get("priority") in {"normal", "important", "less"} else "normal",
+            "created_by": "XOMNI",
+            "timetable_block_id": block_id,
+            "start_minute": start_minute,
+            "end_minute": end_minute,
+            "recurrence_rule": recurrence_rule,
+            "recurrence_until": recurrence_until,
+            "recurrence_days": action.get("recurrence_days") if isinstance(action.get("recurrence_days"), list) else [],
+        })
         result["affected"].append({"type": "todo", "id": str(todo.id), "due_date": due.isoformat()})
         if block_id:
             result["affected"].append({"type": "time_block", "id": str(block_id)})

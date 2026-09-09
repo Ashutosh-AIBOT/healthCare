@@ -10,6 +10,7 @@ import {
   MoreHorizontal, Link2, Download, History, BrainCircuit, ActivitySquare, TriangleAlert
 } from "lucide-react";
 import { apiClient, getAccessToken, setAccessToken } from "@/lib/auth-client";
+import { VoiceTalkButton } from "@/components/app/voice-talk-button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -187,10 +188,14 @@ export default function XomniPage() {
 
 
 
-  // ── TTS helper ──────────────────────────────────────────────────────────
+  // ── TTS helper (spoken reply = short summary; full text stays on screen) ──
   const speak = (text: string) => {
     if (!ttsEnabled || typeof window === "undefined") return;
-    const utt = new SpeechSynthesisUtterance(text.replace(/[*_#`]/g, "").slice(0, 500));
+    const clean = text.replace(/[*_#`]/g, "");
+    const sentences = clean.match(/[^.!?]+[.!?]+/g) ?? [clean];
+    const summary = sentences.slice(0, 2).join(" ").trim().slice(0, 500);
+    if (!summary) return;
+    const utt = new SpeechSynthesisUtterance(summary);
     utt.rate = 1.05;
     utt.pitch = 1.0;
     window.speechSynthesis.cancel();
@@ -398,6 +403,20 @@ export default function XomniPage() {
       void startVoiceRecording();
     }
   };
+
+  // ── Live voice-room transcript → same send path as typed input ──────────
+  // History, points and guardrails apply unchanged; MediaRecorder flow above
+  // stays untouched as the fallback.
+  const handleVoiceRoomTranscript = useCallback(
+    (text: string) => {
+      void send(text);
+    },
+    [send]
+  );
+
+  const handleVoiceRoomError = useCallback((message: string) => {
+    setVoiceError(message);
+  }, []);
 
   // ── Load conversation messages ──────────────────────────────────────────
   const loadConversation = async (convId: string) => {
@@ -753,6 +772,12 @@ export default function XomniPage() {
                   >
                     {voiceState === "recording" ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
                   </button>
+
+                  <VoiceTalkButton
+                    onTranscript={handleVoiceRoomTranscript}
+                    onError={handleVoiceRoomError}
+                    context={mode}
+                  />
 
                   <Button
                     onClick={() => void send(input)}

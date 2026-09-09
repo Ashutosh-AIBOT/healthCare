@@ -74,6 +74,7 @@ class TimetableActionRequest(BaseModel):
 class LiveKitTokenRequest(BaseModel):
     room_name: str | None = None   # auto-generated if omitted
     conversation_id: str | None = None
+    context: str | None = None
 
 
 # ─────────────────────────── Chat (NVIDIA + Groq streaming) ─────────────────
@@ -291,11 +292,14 @@ async def livekit_token(
     name = current_user.full_name or current_user.email
 
     gateway = LLMGateway(db, user_id=str(current_user.id))
+    context_val = payload.context or "general"
+    metadata = json.dumps({"user_id": str(current_user.id), "context": context_val})
     try:
         token = await gateway.create_livekit_token(
             room_name=room,
             participant_identity=identity,
             participant_name=name,
+            metadata=metadata,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -308,6 +312,7 @@ async def livekit_token(
         "room_name": room,
         "livekit_url": livekit_url,
         "participant_identity": identity,
+        "context": context_val,
     }
 
 

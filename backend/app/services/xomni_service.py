@@ -480,7 +480,7 @@ XOMNI:"""
     try:
         llm_result = await gateway.complete(
             prompt=full_prompt,
-            model="nvidia/nemotron-3.5-lightning-30b-a3b",
+            model=None,
         )
         answer_text = llm_result.text
         provider_used = str(llm_result.provider) if llm_result.provider else "mock"

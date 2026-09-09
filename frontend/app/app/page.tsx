@@ -102,6 +102,12 @@ export default function AppHomePage() {
     void loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    const refresh = () => void loadData();
+    window.addEventListener("aarogya:data-changed", refresh);
+    return () => window.removeEventListener("aarogya:data-changed", refresh);
+  }, [loadData]);
+
   const firstName = me?.full_name?.split(" ")[0] || "there";
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";

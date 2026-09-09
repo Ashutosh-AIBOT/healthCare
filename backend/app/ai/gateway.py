@@ -32,7 +32,7 @@ class Provider(str, Enum):
 # Default models per provider
 DEFAULT_MODELS = {
     Provider.NVIDIA: "nvidia/nemotron-3.5-lightning-30b-a3b",
-    Provider.GROQ:   "llama-3.3-70b-versatile",   # fastest streaming model
+    Provider.GROQ:   "openai/gpt-oss-120b",   # fastest streaming model
     Provider.OPENAI: "gpt-4o-mini",
     Provider.GEMINI: "gemini-1.5-flash",
     Provider.OLLAMA: "llama3",

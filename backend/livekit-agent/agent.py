@@ -69,7 +69,7 @@ class UserGroqVoiceLLM(llm.LLM):
 
     @property
     def model(self) -> str:
-        return "llama-3.3-70b-versatile"
+        return "openai/gpt-oss-120b"
 
     def chat(self, *, chat_ctx, tools, conn_options=APIConnectOptions(), parallel_tool_calls=None,
              tool_choice=None, extra_kwargs=None) -> llm.LLMStream:
@@ -112,15 +112,15 @@ async def entrypoint(ctx: JobContext):
     session = AgentSession(
         stt=stt.FallbackAdapter(
             [
-                inference.STT.from_model_string("assemblyai/universal-streaming:en"),
                 inference.STT.from_model_string("deepgram/nova-3"),
+                inference.STT.from_model_string("deepgram/nova-2"),
             ]
         ),
         llm=UserGroqVoiceLLM(groq_key),
         tts=tts.FallbackAdapter(
             [
                 inference.TTS.from_model_string("cartesia/sonic-3"),
-                inference.TTS.from_model_string("openai/tts-1"),
+                inference.TTS.from_model_string("cartesia/sonic-2"),
             ]
         ),
         vad=silero.VAD.load(

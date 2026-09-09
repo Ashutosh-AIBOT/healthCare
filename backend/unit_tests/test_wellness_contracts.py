@@ -7,6 +7,7 @@ from app.services.xomni_service import (
     _extract_action,
     _fallback_fitness_action,
     _fallback_timetable_action,
+    _canonical_title,
     _hour_to_minute,
     _is_action_confirmation,
     _is_action_rejection,
@@ -90,3 +91,4 @@ def test_timetable_update_gets_confirmation_gated_fallback_action() -> None:
     assert action["existing_title"] == "30 minute walk"
     assert action["start_hour"] == 15
     assert action["end_hour"] == 16
+    assert _canonical_title("30\u202fminute  walk") == _canonical_title("30 minute walk")

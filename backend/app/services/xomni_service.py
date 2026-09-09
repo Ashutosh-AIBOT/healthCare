@@ -243,6 +243,11 @@ def _hour_to_minute(value: Any) -> int | None:
     return minutes
 
 
+def _canonical_title(value: str) -> str:
+    """Match human/model titles despite Unicode or repeated whitespace."""
+    return " ".join(value.split()).casefold()
+
+
 def _fallback_fitness_action(message: str) -> dict | None:
     """Create a narrow proposal when the model misses the required action JSON."""
     lowered = message.lower()
@@ -334,12 +339,12 @@ async def _resolve_todo_for_action(db: AsyncSession, family_id: uuid.UUID, user_
             raise ValueError("I could not find that todo. Please tell me its exact title.")
         return todo
 
-    title = str(action.get("existing_title") or "").strip().casefold()
+    title = _canonical_title(str(action.get("existing_title") or ""))
     todos = await db.scalars(select(Todo).where(
         Todo.family_id == family_id,
         Todo.user_id == user_id,
     ).order_by(Todo.due_date, Todo.created_at))
-    matches = [todo for todo in todos if todo.title.strip().casefold() == title]
+    matches = [todo for todo in todos if _canonical_title(todo.title) == title]
     due_date = action.get("existing_due_date")
     if due_date is None and action.get("action") != "update_todo":
         due_date = action.get("due_date")

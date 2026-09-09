@@ -2,9 +2,10 @@
 
 import * as React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { EmptyState, ErrorState } from "@/components/ui/card";
 import { apiClient } from "@/lib/auth-client";
-import { Bell, Send, CheckCircle2, Circle, SkipForward, TriangleAlert, Calendar } from "lucide-react";
+import { Bell, CheckCircle2, Circle, SkipForward, TriangleAlert, Calendar } from "lucide-react";
 
 type TimeBlock = {
   id: string;
@@ -88,8 +89,6 @@ export default function TimeManagementPage() {
   const [checkinBlock, setCheckinBlock] = useState<DayPlanBlock | null>(null);
   const [checkinTitle, setCheckinTitle] = useState("");
   const [checkinMatched, setCheckinMatched] = useState(true);
-  const [telegramChatId, setTelegramChatId] = useState<string>("");
-  const [telegramStatus, setTelegramStatus] = useState<string>("");
   const [newTodoTitle, setNewTodoTitle] = useState("");
   const [newTodoPriority, setNewTodoPriority] = useState<"normal" | "important" | "less">("normal");
   const [addingTodo, setAddingTodo] = useState(false);
@@ -182,24 +181,6 @@ export default function TimeManagementPage() {
     void load();
   };
 
-  const handleConnectTelegram = async () => {
-    setTelegramStatus("connect_requested");
-    await apiClient("/api/v1/integrations/telegram/connect", {
-      method: "POST",
-      body: JSON.stringify({ chat_id: telegramChatId }),
-    });
-    setTelegramStatus("connected");
-  };
-
-  const handleSendDailyReport = async () => {
-    await apiClient("/api/v1/integrations/telegram/daily-report", {
-      method: "POST",
-      body: JSON.stringify({ date: selectedDate }),
-    });
-    setTelegramStatus("report_sent");
-    setTimeout(() => setTelegramStatus(""), 3000);
-  };
-
   const calendar = useMemo(() => {
     const base = new Date(selectedDate + "T12:00:00");
     const y = base.getFullYear();
@@ -285,13 +266,6 @@ export default function TimeManagementPage() {
                 </button>
               ))}
             </div>
-            <button
-              onClick={handleSendDailyReport}
-              className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-4 py-2 text-[13px] font-semibold text-text-primary hover:bg-surface-hover"
-            >
-              <Send className="h-4 w-4" />
-              Telegram daily report
-            </button>
           </div>
         </div>
 
@@ -441,17 +415,10 @@ export default function TimeManagementPage() {
             </div>
             <div className="rounded-[1.5rem] border border-line bg-surface p-4 shadow-card">
               <h3 className="text-sm font-semibold text-ink">Telegram</h3>
-              <p className="mt-1 text-xs text-muted">Connect Telegram to get daily reports and check-in reminders.</p>
-              <div className="mt-3 flex gap-2">
-                <input
-                  value={telegramChatId}
-                  onChange={(e) => setTelegramChatId(e.target.value)}
-                  placeholder="Telegram chat_id"
-                  className="flex-1 rounded-xl border border-line bg-surface px-3 py-2 text-xs"
-                />
-                <button onClick={handleConnectTelegram} className="rounded-xl bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground">Connect</button>
-              </div>
-              {telegramStatus && <p className="mt-2 text-xs text-muted">{telegramStatus}</p>}
+              <p className="mt-1 text-xs text-muted">Connect a bot from Profile. Once linked, Xomni proposals can be confirmed here or in Telegram.</p>
+              <Link href="/app/profile" className="mt-3 inline-flex rounded-xl bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground">
+                Open Telegram settings
+              </Link>
             </div>
           </div>
         </div>

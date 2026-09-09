@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -161,6 +161,134 @@ async def list_messages(
         .limit(limit)
     )
     return list((await db.execute(q)).scalars().all())
+
+
+def _extract_action(answer_text: str) -> tuple[str, dict | None]:
+    """Extract the first valid action object, including nested meal proposals."""
+    import json as _json
+
+    decoder = _json.JSONDecoder()
+    cursor = 0
+    while True:
+        start = answer_text.find("{", cursor)
+        if start < 0:
+            return answer_text, None
+        try:
+            candidate, end = decoder.raw_decode(answer_text[start:])
+        except _json.JSONDecodeError:
+            cursor = start + 1
+            continue
+        if isinstance(candidate, dict) and candidate.get("action"):
+            clean = (answer_text[:start] + answer_text[start + end:]).strip()
+            return clean, candidate
+        cursor = start + 1
+
+
+async def apply_pending_action(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    family_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+) -> dict[str, Any]:
+    """Apply a previously proposed action after an explicit user confirmation."""
+    from app.models.time import TimeBlock, TimeTimetable, Todo
+    from app.services.time_service import time_service
+
+    conv = await db.scalar(select(XomniConversation).where(
+        XomniConversation.id == conversation_id,
+        XomniConversation.user_id == user_id,
+    ))
+    if not conv or not conv.pending_action:
+        raise ValueError("There is no pending Xomni action to confirm.")
+    if conv.pending_action_expires_at and conv.pending_action_expires_at < datetime.now(UTC):
+        conv.pending_action = None
+        conv.pending_action_expires_at = None
+        await db.flush()
+        raise ValueError("That proposal has expired. Please ask Xomni again.")
+
+    action = conv.pending_action.get("action") if isinstance(conv.pending_action, dict) else None
+    if not isinstance(action, dict):
+        raise ValueError("The pending Xomni action is invalid.")
+
+    action_name = action.get("action")
+    result: dict[str, Any] = {"action": action_name, "affected": []}
+    if action_name == "propose_todo":
+        title = str(action.get("title") or "").strip()
+        if not title:
+            raise ValueError("The proposed task has no title.")
+        await time_service.ensure_defaults(db, family_id, user_id)
+        tt = await db.scalar(select(TimeTimetable).where(
+            TimeTimetable.family_id == family_id,
+            TimeTimetable.user_id == user_id,
+            TimeTimetable.kind == "productive",
+        ))
+        block_id = None
+        start_hour = action.get("start_hour")
+        end_hour = action.get("end_hour")
+        if isinstance(start_hour, int) and isinstance(end_hour, int) and 0 <= start_hour < end_hour <= 24 and tt:
+            block = TimeBlock(
+                timetable_id=tt.id,
+                title=title,
+                start_minute=start_hour * 60,
+                end_minute=end_hour * 60,
+                priority=action.get("priority") if action.get("priority") in {"normal", "important", "less"} else "normal",
+                description="Created by Xomni after user confirmation.",
+            )
+            db.add(block)
+            await db.flush()
+            block_id = block.id
+        due_date = action.get("due_date")
+        try:
+            due = date.fromisoformat(due_date) if isinstance(due_date, str) else date.today()
+        except ValueError:
+            due = date.today()
+        todo = Todo(
+            family_id=family_id,
+            user_id=user_id,
+            title=title,
+            description=action.get("description"),
+            due_date=due,
+            priority=action.get("priority") if action.get("priority") in {"normal", "important", "less"} else "normal",
+            created_by="XOMNI",
+            timetable_block_id=block_id,
+        )
+        db.add(todo)
+        await db.flush()
+        result["affected"].append({"type": "todo", "id": str(todo.id), "due_date": due.isoformat()})
+        if block_id:
+            result["affected"].append({"type": "time_block", "id": str(block_id)})
+    elif action_name == "propose_meal_plan":
+        from app.models.xomni import MealPlan
+
+        plan = await db.scalar(select(MealPlan).where(MealPlan.user_id == user_id).order_by(MealPlan.updated_at.desc()))
+        current = dict(plan.plan_json or {}) if plan else {}
+        meal_type = str(action.get("meal_type") or "lunch")
+        if meal_type not in {"breakfast", "lunch", "snacks", "dinner"}:
+            meal_type = "lunch"
+        proposal = action.get("proposal")
+        items = proposal if isinstance(proposal, list) else [proposal]
+        items = [item for item in items if isinstance(item, dict) and item.get("name")]
+        if not items:
+            raise ValueError("The proposed meal plan has no meal items.")
+        current[meal_type] = items
+        if plan:
+            plan.plan_json = current
+            plan.created_by = "XOMNI"
+            plan.ai_generated = True
+            plan.version += 1
+        else:
+            plan = MealPlan(user_id=user_id, plan_json=current, created_by="XOMNI", ai_generated=True, version=1)
+            db.add(plan)
+        await db.flush()
+        result["affected"].append({"type": "meal_plan", "id": str(plan.id), "meal_type": meal_type})
+    else:
+        raise ValueError("This Xomni action cannot be confirmed yet.")
+
+    conv.pending_action = None
+    conv.pending_action_expires_at = None
+    await db.flush()
+    return result
 
 
 async def _get_learn_context(db: AsyncSession, question: str) -> str:
@@ -325,19 +453,13 @@ XOMNI:"""
     # Apply guardrails
     answer_text = guardrails.apply_guardrails(answer_text)
 
-    # Detect timetable/food actions
+    # Detect and persist actions so confirmation is server-owned and resumable.
     action = None
     if mode in ["timetable", "food", "general"]:
-        import json as _json
-        import re
-        json_match = re.search(r'\{[^{}]*"action"[^{}]*\}', answer_text)
-        if json_match:
-            try:
-                action = _json.loads(json_match.group())
-                # optionally, we could strip the JSON from answer_text here so the user just sees text + the card
-                answer_text = answer_text.replace(json_match.group(), "").strip()
-            except Exception:
-                pass
+        answer_text, action = _extract_action(answer_text)
+        if action:
+            conv.pending_action = {"action": action}
+            conv.pending_action_expires_at = datetime.now(UTC) + timedelta(minutes=15)
 
     # Update conversation title from first user message
     if conv.title == "New Chat":

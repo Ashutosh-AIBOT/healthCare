@@ -30,6 +30,8 @@ class XomniConversation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     telegram_chat_id: Mapped[str | None] = mapped_column(String(60), nullable=True, index=True)
     user_prompt_prefix: Mapped[str | None] = mapped_column(Text, nullable=True)
     # User's persistent instructions / dietary restrictions
+    pending_action: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    pending_action_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     messages: Mapped[list["XomniMessage"]] = relationship(
         back_populates="conversation", cascade="all, delete-orphan",

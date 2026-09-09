@@ -60,6 +60,26 @@ async def test_telegram_connect_and_webhook_round_trip(client, db, monkeypatch):
         assert conversation is not None
         assert conversation.user_id == connection.user_id
 
+        conversation.pending_action = {
+            "action": {
+                "action": "propose_todo",
+                "title": "Walk",
+                "start_hour": 14,
+                "end_hour": 16,
+                "priority": "normal",
+            }
+        }
+        await db.flush()
+        confirmation = {
+            **update,
+            "update_id": 102,
+            "message": {**update["message"], "text": "yes"},
+        }
+        confirmed = await client.post(f"/api/v1/integrations/telegram/webhook/{connection.webhook_secret}", json=confirmation)
+        assert confirmed.status_code == 200
+        assert confirmed.json()["action"] == "confirmed"
+        assert calls[-1][1]["text"].startswith("Done.")
+
         calls_before_retry = len(calls)
         retry = await client.post(f"/api/v1/integrations/telegram/webhook/{connection.webhook_secret}", json=update)
         assert retry.status_code == 200

@@ -622,49 +622,45 @@ export default function XomniPage() {
                               onAccept={async () => {
                                 try {
                                   const token = getAccessToken();
-                                  if (message.action.action === "propose_meal_plan") {
-                                    await fetch("/api/v1/nutrition/meal-plan/save", {
-                                      method: "POST",
-                                      headers: {
-                                        "Content-Type": "application/json",
-                                        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                                      },
-                                      body: JSON.stringify({
-                                        plan_json: message.action.proposal,
-                                        created_by: "XOMNI"
-                                      }),
-                                    });
-                                  } else if (message.action.action === "propose_todo") {
-                                    await fetch("/api/v1/time/todos", {
-                                      method: "POST",
-                                      headers: {
-                                        "Content-Type": "application/json",
-                                        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                                      },
-                                      body: JSON.stringify({
-                                        title: message.action.title,
-                                        due_date: new Date().toISOString().split("T")[0],
-                                        priority: message.action.priority || "normal",
-                                        created_by: "XOMNI"
-                                      }),
-                                    });
-                                  }
+                                  if (!activeConvId) throw new Error("This proposal is no longer attached to a conversation.");
+                                  const response = await fetch("/api/v1/xomni/actions/confirm", {
+                                    method: "POST",
+                                    headers: {
+                                      "Content-Type": "application/json",
+                                      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                                    },
+                                    credentials: "include",
+                                    body: JSON.stringify({ conversation_id: activeConvId }),
+                                  });
+                                  if (!response.ok) throw new Error((await response.text()) || "Could not apply proposal.");
                                   // Add a system response back to chat
                                   setMessages(prev => [...prev, {
                                     id: `${Date.now()}-sys`,
                                     role: "user",
-                                    content: "I have accepted this proposal.",
+                                    content: "I have accepted this proposal and updated my plan.",
                                     createdAt: new Date()
                                   }]);
                                 } catch (e) {
-                                  console.error(e);
+                                  setError(e instanceof Error ? e.message : "Could not apply proposal.");
                                 }
                               }}
-                              onReject={() => {
+                              onReject={async () => {
+                                if (activeConvId) {
+                                  const token = getAccessToken();
+                                  await fetch("/api/v1/xomni/actions/reject", {
+                                    method: "POST",
+                                    headers: {
+                                      "Content-Type": "application/json",
+                                      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                                    },
+                                    credentials: "include",
+                                    body: JSON.stringify({ conversation_id: activeConvId }),
+                                  });
+                                }
                                 setMessages(prev => [...prev, {
                                   id: `${Date.now()}-sys`,
                                   role: "user",
-                                  content: "I reject this proposal. Let's adjust it.",
+                                  content: "I rejected this proposal. Let’s adjust it.",
                                   createdAt: new Date()
                                 }]);
                               }}
@@ -772,4 +768,3 @@ export default function XomniPage() {
     </div>
   );
 }
-

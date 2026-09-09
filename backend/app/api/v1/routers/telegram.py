@@ -167,6 +167,33 @@ async def receive_telegram_update(
         XomniConversation.user_id == connection.user_id,
         XomniConversation.telegram_chat_id == str(chat_id),
     ).order_by(XomniConversation.updated_at.desc()))
+    normalized_text = text.strip().lower()
+    if conversation and normalized_text in {"yes", "y", "confirm", "confirmed", "approve", "approved"}:
+        owner = await db.get(User, connection.user_id)
+        if owner and owner.family_id:
+            try:
+                await xomni_service.apply_pending_action(
+                    db,
+                    user_id=owner.id,
+                    family_id=owner.family_id,
+                    conversation_id=conversation.id,
+                )
+                await _send_text(token, chat_id, "Done. I applied the approved update to your plan.")
+                if isinstance(update_id, int):
+                    connection.last_update_id = update_id
+                await db.commit()
+                return {"ok": True, "replied": True, "action": "confirmed"}
+            except ValueError as exc:
+                await _send_text(token, chat_id, str(exc))
+                return {"ok": True, "replied": True, "action": "confirmation_failed"}
+    if conversation and normalized_text in {"no", "n", "reject", "rejected", "cancel", "cancelled"}:
+        conversation.pending_action = None
+        conversation.pending_action_expires_at = None
+        if isinstance(update_id, int):
+            connection.last_update_id = update_id
+        await _send_text(token, chat_id, "Okay, I left your plan unchanged.")
+        await db.commit()
+        return {"ok": True, "replied": True, "action": "rejected"}
     result = await xomni_service.chat(
         db, user_id=connection.user_id, message=text.strip(), mode="general",
         conversation_id=conversation.id if conversation else None,

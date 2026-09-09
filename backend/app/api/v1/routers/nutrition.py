@@ -181,34 +181,17 @@ async def get_current_meal_plan(
     plan = (await db.execute(q)).scalars().first()
     
     if not plan:
-        # Default structured fallback
-        default_plan = {
-            "breakfast": [
-                {"name": "Oatmeal with chia seeds & almonds", "calories": 320, "protein": 12, "carbs": 48, "fats": 8, "created_by": "XOMNI"},
-                {"name": "Boiled eggs (2) or Tofu scramble", "calories": 150, "protein": 14, "carbs": 2, "fats": 10, "created_by": "XOMNI"}
-            ],
-            "lunch": [
-                {"name": "Brown rice with mixed dal & greens", "calories": 420, "protein": 18, "carbs": 68, "fats": 7, "created_by": "XOMNI"},
-                {"name": "Grilled chicken breast or paneer tikka", "calories": 240, "protein": 28, "carbs": 4, "fats": 12, "created_by": "XOMNI"}
-            ],
-            "snacks": [
-                {"name": "Roasted chana with green tea", "calories": 140, "protein": 7, "carbs": 22, "fats": 3, "created_by": "USER"}
-            ],
-            "dinner": [
-                {"name": "Quinoa bowl with steamed broccoli & lentils", "calories": 360, "protein": 16, "carbs": 52, "fats": 8, "created_by": "XOMNI"}
-            ]
-        }
         return {
             "id": None,
-            "plan_json": default_plan,
-            "created_by": "SYSTEM",
+            "plan_json": {},
+            "created_by": "NONE",
             "version": 1,
-            "ai_generated": True,
-            "notes": "Default starter plan based on balanced nutrition guidelines.",
-            "days_followed": 3,
+            "ai_generated": False,
+            "notes": None,
+            "days_followed": 0,
             "preferences": {
-                "craving": "Sourdough toast, Indian spices, cottage cheese, cold brew",
-                "recommended": "High-fiber grains, anti-inflammatory herbs, omega-3, lean proteins"
+                "craving": "No preferences recorded yet.",
+                "recommended": "Complete your nutrition profile to receive calibrated recommendations."
             }
         }
 

@@ -299,11 +299,26 @@ async def livekit_token(
     The browser LiveKit SDK uses this token to connect to the room,
     capture microphone audio, and stream it for STT processing.
 
+    Token-only: the worker joins via LiveKit's implicit auto-dispatch on
+    participant join. No explicit dispatch (two dispatches = two agents).
+
+    Hard limit: ONE active voice call app-wide (free-tier guard). A second
+    caller gets 409 VOICE_BUSY while any room has participants.
+
     Requires: LIVEKIT_API_KEY + LIVEKIT_API_SECRET in environment.
     """
+    from app.services import voice_lock
+
     room = payload.room_name or f"xomni-{current_user.id}-{payload.conversation_id or uuid.uuid4().hex[:8]}"
     identity = str(current_user.id)
     name = current_user.full_name or current_user.email
+
+    acquired, _reason = await voice_lock.acquire_voice_call(room)
+    if not acquired:
+        raise HTTPException(
+            status_code=409,
+            detail="Someone is on a live voice call right now. Please try again in a few minutes.",
+        )
 
     gateway = LLMGateway(db, user_id=str(current_user.id))
     context_val = payload.context or "general"
@@ -316,20 +331,11 @@ async def livekit_token(
             metadata=metadata,
         )
     except ValueError as e:
+        await voice_lock.release_voice_call(room)
         raise HTTPException(status_code=400, detail=str(e))
 
     import os
     livekit_url = os.environ.get("LIVEKIT_URL", "")
-
-    try:
-        dispatch_id = await gateway.dispatch_voice_agent(
-            room_name=room,
-            metadata=metadata,
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except RuntimeError as e:
-        raise HTTPException(status_code=503, detail=str(e))
 
     return {
         "token": token,
@@ -337,9 +343,28 @@ async def livekit_token(
         "livekit_url": livekit_url,
         "participant_identity": identity,
         "context": context_val,
-        "agent_dispatched": True,
-        "dispatch_id": dispatch_id,
     }
+
+
+class HangupRequest(BaseModel):
+    room_name: str
+
+
+@router.delete("/voice/hangup", response_model=dict)
+async def voice_hangup(
+    payload: HangupRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> dict:
+    """Release the single voice-call slot after hanging up (best-effort).
+
+    The 12-minute lock TTL covers missed hangups; this just frees the slot
+    immediately for the next caller.
+    """
+    from app.services import voice_lock
+
+    _ = current_user  # authenticated, but the slot is global by design
+    released = await voice_lock.release_voice_call(payload.room_name)
+    return {"released": released}
 
 
 # ─────────────────────────── Conversations ──────────────────────────────────

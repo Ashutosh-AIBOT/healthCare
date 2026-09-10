@@ -166,8 +166,11 @@ export default function XomniPage() {
 
 
   // ── TTS helper (spoken reply = short summary; full text stays on screen) ──
+  // Muted while the LiveKit room is active so the browser voice never talks
+  // over the realtime agent voice (single-audio calls).
+  const [voiceRoomActive, setVoiceRoomActive] = useState(false);
   const speak = (text: string) => {
-    if (!ttsEnabled || typeof window === "undefined") return;
+    if (!ttsEnabled || voiceRoomActive || typeof window === "undefined") return;
     const clean = text.replace(/[*_#`]/g, "");
     const sentences = clean.match(/[^.!?]+[.!?]+/g) ?? [clean];
     const summary = sentences.slice(0, 2).join(" ").trim().slice(0, 500);
@@ -325,7 +328,7 @@ export default function XomniPage() {
         setLoading(false);
       }
     },
-    [loading, mode, activeConvId, contextMemberId, contextDocumentId, ttsEnabled]
+    [loading, mode, activeConvId, contextMemberId, contextDocumentId, ttsEnabled, voiceRoomActive]
   );
 
   // ── Voice recording ──────────────────────────────────────────────────────
@@ -788,6 +791,7 @@ export default function XomniPage() {
                     onTranscript={handleVoiceRoomTranscript}
                     onError={handleVoiceRoomError}
                     context={mode}
+                    onActiveChange={setVoiceRoomActive}
                   />
 
                   <Button

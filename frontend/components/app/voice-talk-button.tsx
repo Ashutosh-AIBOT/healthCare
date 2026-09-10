@@ -14,6 +14,9 @@ interface VoiceTalkButtonProps {
   onTranscript: (text: string) => void;
   onError: (message: string) => void;
   context?: string;
+  onActiveChange?: (active: boolean) => void;
+  /** Soft cap per call (free-tier inference budget). 0 = no cap. */
+  maxMinutes?: number;
 }
 
 interface TokenResponse {
@@ -142,18 +145,39 @@ function VoiceRoomEvents({
   return null;
 }
 
-export function VoiceTalkButton({ onTranscript, onError, context = "general" }: VoiceTalkButtonProps) {
+export function VoiceTalkButton({ onTranscript, onError, context = "general", onActiveChange, maxMinutes = 10 }: VoiceTalkButtonProps) {
   const [status, setStatus] = useState<VoiceRoomStatus>("idle");
   const [token, setToken] = useState<string | null>(null);
   const [serverUrl, setServerUrl] = useState<string | null>(null);
+  const [roomName, setRoomName] = useState<string | null>(null);
   const startingRef = useRef(false);
+  const capTimerRef = useRef<number | null>(null);
+
+  const clearCapTimer = useCallback(() => {
+    if (capTimerRef.current !== null) {
+      window.clearTimeout(capTimerRef.current);
+      capTimerRef.current = null;
+    }
+  }, []);
 
   const leave = useCallback(() => {
+    clearCapTimer();
+    // Best-effort slot release so the next caller is not blocked.
+    // The 12-minute server TTL covers missed hangups.
+    const room = roomName;
+    if (room) {
+      void apiClient("/api/v1/xomni/voice/hangup", {
+        method: "DELETE",
+        body: JSON.stringify({ room_name: room }),
+      }).catch(() => undefined);
+    }
     setToken(null);
     setServerUrl(null);
+    setRoomName(null);
     setStatus("idle");
     startingRef.current = false;
-  }, []);
+    onActiveChange?.(false);
+  }, [clearCapTimer, onActiveChange, roomName]);
 
   const start = useCallback(async () => {
     if (startingRef.current || status !== "idle") return;
@@ -176,15 +200,30 @@ export function VoiceTalkButton({ onTranscript, onError, context = "general" }: 
       body: JSON.stringify({ context }),
     });
     if (error || !data?.token || !data?.livekit_url) {
-      onError("Could not start voice session. Please try again.");
+      if (error?.status === 409) {
+        onError("Someone is on a live voice call right now. Please try again in a few minutes.");
+      } else {
+        onError("Could not start voice session. Please try again.");
+      }
       setStatus("idle");
       startingRef.current = false;
       return;
     }
     setToken(data.token);
     setServerUrl(data.livekit_url);
+    setRoomName(data.room_name ?? null);
     setStatus("listening");
-  }, [context, onError, status]);
+    onActiveChange?.(true);
+    // Free-tier guard: end the call at the cap so one session cannot burn
+    // the monthly inference budget. 0 disables.
+    clearCapTimer();
+    if (maxMinutes > 0) {
+      capTimerRef.current = window.setTimeout(() => {
+        onError("Voice session ended at the 10-minute free-tier limit. Rejoin to continue.");
+        leave();
+      }, maxMinutes * 60 * 1000);
+    }
+  }, [context, onActiveChange, onError, status, maxMinutes, clearCapTimer, leave]);
 
   const toggle = useCallback(() => {
     if (status === "idle") {
@@ -195,6 +234,8 @@ export function VoiceTalkButton({ onTranscript, onError, context = "general" }: 
   }, [status, start, leave]);
 
   const active = status !== "idle";
+
+  useEffect(() => clearCapTimer, [clearCapTimer]);
 
   return (
     <>

@@ -117,6 +117,12 @@ export default function FoodPage() {
     void loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    const refresh = () => void loadData();
+    window.addEventListener("aarogya:data-changed", refresh);
+    return () => window.removeEventListener("aarogya:data-changed", refresh);
+  }, [loadData]);
+
   // Handle manual addition/save
   const handleSaveManualItem = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -340,7 +346,7 @@ export default function FoodPage() {
           <p className="text-sm font-semibold text-text-primary">Water today: {summary?.water_ml ?? 0} ml</p>
           <p className="text-xs text-text-secondary">Log a 250 ml serving or manage entries from your daily record.</p>
         </div>
-        <button onClick={() => void handleLogWater()} className="inline-flex items-center gap-2 rounded-full bg-accent-water px-4 py-2 text-xs font-semibold text-white hover:opacity-90">
+        <button onClick={() => void handleLogWater()} className="inline-flex items-center gap-2 rounded-full bg-accent-water px-4 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90">
           + 250 ml water
         </button>
       </div>
@@ -465,7 +471,7 @@ export default function FoodPage() {
 
       {/* Manual Add Item Modal */}
       {isEditOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="relative w-full max-w-md rounded-[2rem] border border-line bg-surface p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-line/40 pb-3">
               <h3 className="font-semibold text-ink text-base">

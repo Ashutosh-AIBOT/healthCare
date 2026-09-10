@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 
 export default function DoctorDashboardPage() {
   return (
-    <div className="min-h-dvh bg-[linear-gradient(180deg,var(--color-mist)_0%,var(--color-foam)_28%,var(--color-foam)_100%)]">
+    <div className="min-h-dvh bg-foam">
       <header className="sticky top-0 z-30 border-b border-line/50 bg-foam/85 backdrop-blur-xl">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-4 md:px-6">
           <Logo href="/doctor" className="text-lg" />

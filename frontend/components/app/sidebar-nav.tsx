@@ -168,7 +168,7 @@ export function SidebarNav({
           type="button"
           onClick={onClose}
           aria-label="Close sidebar"
-          className="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm lg:hidden"
+          className="fixed inset-0 z-40 bg-ink/20 backdrop-blur-sm lg:hidden"
         />
       ) : null}
       <aside

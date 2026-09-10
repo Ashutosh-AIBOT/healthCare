@@ -23,6 +23,7 @@ from app.models import (  # noqa: F401
     user,
     visibility,
     telegram,
+    rag_context,
 )
 
 # Guarded optional imports — modules may not exist on some feature branches

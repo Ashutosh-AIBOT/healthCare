@@ -194,9 +194,11 @@ async def receive_telegram_update(
         await _send_text(token, chat_id, "Okay, I left your plan unchanged.")
         await db.commit()
         return {"ok": True, "replied": True, "action": "rejected"}
+    owner = await db.get(User, connection.user_id)
     result = await xomni_service.chat(
         db, user_id=connection.user_id, message=text.strip(), mode="general",
         conversation_id=conversation.id if conversation else None,
+        family_id=owner.family_id if owner else None,
     )
     if result.get("conversation_id"):
         linked = await db.get(XomniConversation, uuid.UUID(result["conversation_id"]))

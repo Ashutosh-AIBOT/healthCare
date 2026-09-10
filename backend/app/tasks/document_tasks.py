@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import logging
+import re
 import uuid
 
 from sqlalchemy import select
@@ -19,33 +21,70 @@ from app.models.documents import (
     LabReportValue,
 )
 from app.services.job_service import job_service
+from app.integrations import storage
 from app.tasks.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 
-# Stub extracted values for the walking skeleton (no real OCR / LLM).
-_STUB_VALUES = (
-    {
-        "analyte_code": "HGB",
-        "analyte_name": "Hemoglobin",
-        "value_num": 13.2,
-        "unit": "g/dL",
-        "ref_low": 12.0,
-        "ref_high": 17.0,
-        "flag": "within_range",
-        "page": 1,
-    },
-    {
-        "analyte_code": "GLU",
-        "analyte_name": "Glucose",
-        "value_num": 98.0,
-        "unit": "mg/dL",
-        "ref_low": 70.0,
-        "ref_high": 99.0,
-        "flag": "within_range",
-        "page": 1,
-    },
-)
+def _extract_pdf_pages(data: bytes) -> list[tuple[int, str]]:
+    """Extract text while preserving page boundaries for citations."""
+    if not data:
+        return []
+    try:
+        from pypdf import PdfReader
+
+        reader = PdfReader(io.BytesIO(data))
+        return [(index + 1, (page.extract_text() or "").strip()) for index, page in enumerate(reader.pages)]
+    except Exception:
+        logger.exception("PDF text extraction failed")
+        return []
+
+
+def _extract_report_values(pages: list[tuple[int, str]]) -> list[dict]:
+    """Parse only lines that visibly include a reference range; never invent values."""
+    values: list[dict] = []
+    pattern = re.compile(
+        r"^(?P<name>[A-Za-z][A-Za-z0-9 /()%-]{2,80}?)\s+(?P<value>-?\d+(?:\.\d+)?)\s*(?P<unit>[A-Za-zµ/%^0-9]+)?\s*(?:\(?\s*(?:ref(?:erence)?|range)\s*[:=]?\s*)?(?P<low>-?\d+(?:\.\d+)?)\s*(?:-|to|–)\s*(?P<high>-?\d+(?:\.\d+)?)\s*\)?$",
+        re.IGNORECASE,
+    )
+    for page, text in pages:
+        for raw_line in text.splitlines():
+            line = " ".join(raw_line.split())
+            if not line or not re.search(r"\b(?:ref(?:erence)?|range)\b|\d\s*(?:-|to|–)\s*\d", line, re.IGNORECASE):
+                continue
+            match = pattern.match(line)
+            if not match:
+                continue
+            name = match.group("name").strip(" :-")
+            value = float(match.group("value"))
+            low = float(match.group("low"))
+            high = float(match.group("high"))
+            values.append({
+                "analyte_code": re.sub(r"[^A-Z0-9]+", "_", name.upper()).strip("_")[:64],
+                "analyte_name": name[:120],
+                "value_num": value,
+                "unit": match.group("unit"),
+                "ref_low": low,
+                "ref_high": high,
+                "flag": "within_range" if low <= value <= high else "outside_range",
+                "page": page,
+                "confidence": 0.65,
+            })
+    return values[:200]
+
+
+def _chunk_pages(pages: list[tuple[int, str]], chunk_size: int = 1600) -> list[tuple[int, int, str]]:
+    chunks: list[tuple[int, int, str]] = []
+    index = 0
+    for page, text in pages:
+        if not text:
+            continue
+        for offset in range(0, len(text), chunk_size):
+            content = text[offset:offset + chunk_size].strip()
+            if content:
+                chunks.append((index, page, content))
+                index += 1
+    return chunks
 
 
 async def process_document_with_session(db: AsyncSession, document_id: uuid.UUID) -> None:
@@ -69,6 +108,10 @@ async def process_document_with_session(db: AsyncSession, document_id: uuid.UUID
     if job_id:
         await job_service.update_progress(db, job_id, progress=40)
 
+    pages = _extract_pdf_pages(storage.get_object_bytes(doc.object_key))
+    if not pages or not any(text for _, text in pages):
+        raise ValueError("The uploaded PDF has no extractable text. Use a text-based PDF or OCR it before upload.")
+
     existing_vals = (
         await db.execute(select(LabReportValue).where(LabReportValue.document_id == doc.id))
     ).scalars().all()
@@ -81,41 +124,29 @@ async def process_document_with_session(db: AsyncSession, document_id: uuid.UUID
         await db.delete(row)
     await db.flush()
 
-    for stub in _STUB_VALUES:
+    extracted_values = _extract_report_values(pages)
+    for value in extracted_values:
         db.add(
             LabReportValue(
                 document_id=doc.id,
                 member_id=doc.member_id,
                 family_id=doc.family_id,
-                analyte_code=stub["analyte_code"],
-                analyte_name=stub["analyte_name"],
-                value_num=stub["value_num"],
-                unit=stub["unit"],
-                ref_low=stub["ref_low"],
-                ref_high=stub["ref_high"],
-                flag=stub["flag"],
-                confidence=0.95,
-                page=stub["page"],
+                analyte_code=value["analyte_code"],
+                analyte_name=value["analyte_name"],
+                value_num=value["value_num"],
+                unit=value["unit"],
+                ref_low=value["ref_low"],
+                ref_high=value["ref_high"],
+                flag=value["flag"],
+                confidence=value["confidence"],
+                page=value["page"],
             )
         )
 
     if job_id:
         await job_service.update_progress(db, job_id, progress=70)
 
-    chunk_texts = (
-        (
-            0,
-            1,
-            "Hemoglobin 13.2 g/dL (reference 12.0–17.0). "
-            "This value appears on page 1 of the uploaded report.",
-        ),
-        (
-            1,
-            1,
-            "Glucose 98 mg/dL (reference 70–99). "
-            "This value appears on page 1 of the uploaded report.",
-        ),
-    )
+    chunk_texts = _chunk_pages(pages)
     for idx, page, content in chunk_texts:
         db.add(
             DocumentChunk(
@@ -136,7 +167,7 @@ async def process_document_with_session(db: AsyncSession, document_id: uuid.UUID
             job_id,
             status=JobStatus.SUCCEEDED,
             progress=100,
-            result={"document_id": str(doc.id), "values": len(_STUB_VALUES)},
+            result={"document_id": str(doc.id), "values": len(extracted_values), "chunks": len(chunk_texts)},
         )
     await db.flush()
     logger.info("process_document succeeded document_id=%s", document_id)

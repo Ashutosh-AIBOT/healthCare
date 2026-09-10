@@ -74,11 +74,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className={cn("flex flex-col lg:ml-64", isXomni ? "h-dvh" : "min-h-dvh")}>
         {!isXomni && <TopBar onToggleSidebar={() => setSidebarOpen(true)} />}
         {isXomni ? (
-          <main className="flex-1 min-h-0 flex flex-col bg-paper">
+          <main id="main-content" className="flex-1 min-h-0 flex flex-col bg-paper">
             {children}
           </main>
         ) : (
-          <main className={cn("flex-1", "px-4 py-6 md:px-6 md:py-8")}>
+          <main id="main-content" className={cn("flex-1", "px-4 py-6 md:px-6 md:py-8")}>
             <div className={cn("mx-auto", "max-w-7xl")}>{children}</div>
           </main>
         )}

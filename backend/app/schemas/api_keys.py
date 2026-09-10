@@ -9,7 +9,7 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field, validator
 
 
-ProviderName = Literal["nvidia", "openai", "gemini", "groq", "ollama", "mock"]
+ProviderName = Literal["nvidia", "openai", "gemini", "groq", "ollama", "mock", "telegram"]
 
 
 class ApiKeyCreate(BaseModel):
@@ -20,7 +20,7 @@ class ApiKeyCreate(BaseModel):
 
     @validator("provider")
     def provider_must_be_valid(cls, v: str) -> str:
-        valid = ["nvidia", "openai", "gemini", "groq", "ollama", "mock"]
+        valid = ["nvidia", "openai", "gemini", "groq", "ollama", "mock", "telegram"]
         if v not in valid:
             raise ValueError(f"Provider must be one of: {valid}")
         return v

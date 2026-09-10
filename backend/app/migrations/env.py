@@ -22,6 +22,7 @@ from app.models import (  # noqa: F401
     time,
     user,
     visibility,
+    telegram,
 )
 
 # Guarded optional imports — modules may not exist on some feature branches

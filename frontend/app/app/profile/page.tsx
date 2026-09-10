@@ -413,13 +413,13 @@ function TelegramKeyForm({ existing, onSaved }: { existing?: ApiKeyItem; onSaved
     setErr(null);
     setMsg(null);
     // Save bot token as telegram provider key
-    const res = await apiClient<{ id: string }>("/api/v1/profile/api-keys/upsert", {
+    const res = await apiClient<{ connected: boolean; bot_username: string }>("/api/v1/integrations/telegram/connect", {
       method: "POST",
-      body: JSON.stringify({ provider: "telegram", api_key: token }),
+      body: JSON.stringify({ bot_token: token, telegram_username: username || null }),
     });
     setSaving(false);
     if (res.error) setErr(res.error.detail || "Failed to save.");
-    else { setMsg("Telegram bot token saved! Your bot is now active."); setToken(""); onSaved(); }
+    else { setMsg(`@${res.data?.bot_username || "bot"} connected and ready.`); setToken(""); onSaved(); }
   };
 
   return (

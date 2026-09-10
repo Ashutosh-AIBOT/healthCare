@@ -32,7 +32,7 @@ class Provider(str, Enum):
 # Default models per provider
 DEFAULT_MODELS = {
     Provider.NVIDIA: "nvidia/nemotron-3.5-lightning-30b-a3b",
-    Provider.GROQ:   "llama-3.3-70b-versatile",   # fastest streaming model
+    Provider.GROQ:   "openai/gpt-oss-120b",   # fastest streaming model
     Provider.OPENAI: "gpt-4o-mini",
     Provider.GEMINI: "gemini-1.5-flash",
     Provider.OLLAMA: "llama3",
@@ -315,6 +315,7 @@ class LLMGateway:
         room_name: str,
         participant_identity: str,
         participant_name: str,
+        metadata: str | None = None,
     ) -> str:
         """Generate a LiveKit access token for a voice room."""
         lk_api_key = os.environ.get("LIVEKIT_API_KEY", "")
@@ -326,7 +327,7 @@ class LLMGateway:
             )
         try:
             from livekit.api import AccessToken, VideoGrants
-            token = (
+            builder = (
                 AccessToken(lk_api_key, lk_api_secret)
                 .with_identity(participant_identity)
                 .with_name(participant_name)
@@ -337,10 +338,59 @@ class LLMGateway:
                     can_subscribe=True,
                 ))
             )
-            return token.to_jwt()
+            if metadata is not None:
+                builder = builder.with_metadata(metadata)
+            return builder.to_jwt()
         except ImportError:
             # livekit-api not installed, return placeholder
             raise ValueError("livekit-api package required. Run: pip install livekit-api")
+
+    async def dispatch_voice_agent(
+        self,
+        *,
+        room_name: str,
+        metadata: str | None = None,
+    ) -> str:
+        """Create an explicit agent dispatch so the worker joins the room.
+
+        Workers running `python agent.py start` (production) do NOT
+        auto-join rooms — without this call the room stays empty and the
+        user hears nothing. Each token call mints a unique room name, so
+        one dispatch per room is safe.
+        Returns the dispatch id. Raises ValueError on misconfiguration,
+        RuntimeError when LiveKit rejects the request.
+        """
+        lk_url = os.environ.get("LIVEKIT_URL", "")
+        lk_api_key = os.environ.get("LIVEKIT_API_KEY", "")
+        lk_api_secret = os.environ.get("LIVEKIT_API_SECRET", "")
+        if not lk_url or not lk_api_key or not lk_api_secret:
+            raise ValueError(
+                "LiveKit credentials not configured. "
+                "Add LIVEKIT_URL, LIVEKIT_API_KEY and LIVEKIT_API_SECRET "
+                "to your environment."
+            )
+        api_url = lk_url.replace("wss://", "https://").replace("ws://", "http://")
+        try:
+            import aiohttp
+            from livekit.api import CreateAgentDispatchRequest
+            from livekit.api.agent_dispatch_service import AgentDispatchService
+        except ImportError:
+            raise ValueError("livekit-api package required. Run: pip install livekit-api")
+        try:
+            async with aiohttp.ClientSession() as http_session:
+                svc = AgentDispatchService(http_session, api_url, lk_api_key, lk_api_secret)
+                dispatch = await svc.create_dispatch(
+                    CreateAgentDispatchRequest(
+                        agent_name="",
+                        room=room_name,
+                        metadata=metadata or "",
+                    )
+                )
+                return dispatch.id
+        except ValueError:
+            raise
+        except Exception as exc:
+            raise RuntimeError(f"Agent dispatch failed: {exc}") from exc
 
     # ------------------------------------------------------------------
     # Individual provider callers
@@ -554,6 +604,11 @@ class LLMGateway:
         )
 
     async def _call_mock(self, prompt: str) -> LLMResponse:
+        if os.environ.get("APP_ENV") not in ("test", "ci"):
+            raise ValueError(
+                "No AI provider key configured. "
+                "Add NVIDIA or Groq key in Profile > AI Provider Keys."
+            )
         text = (
             f"[MOCK] Simulated response to: '{prompt[:80]}...'\n\n"
             "This is a demo response. Add an NVIDIA or Groq API key in Profile > "

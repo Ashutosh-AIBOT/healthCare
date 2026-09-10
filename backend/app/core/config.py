@@ -13,6 +13,7 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+asyncpg://aarogya:aarogya@localhost:5432/aarogya"
     redis_url: str = "redis://localhost:6379/0"
+    telegram_webhook_url: str = ""
 
     llm_api_key: str = ""
     otp_dev_mode: bool = True
@@ -32,9 +33,11 @@ class Settings(BaseSettings):
     smtp_from_name: str = "Aarogya"
     smtp_from_address: str = "noreply@aarogya.local"
 
-    minio_endpoint: str = "localhost:9000"
-    minio_access_key: str = "minio"
-    minio_secret_key: str = "minio123"
+    # Empty endpoint intentionally selects the local /tmp fallback. Configure
+    # these only when durable S3-compatible object storage is available.
+    minio_endpoint: str = ""
+    minio_access_key: str = ""
+    minio_secret_key: str = ""
     minio_bucket_reports: str = "aarogya-reports"
     minio_bucket_private: str = "aarogya-private"
     minio_secure: bool = False

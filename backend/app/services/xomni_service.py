@@ -347,8 +347,13 @@ async def _get_learn_context(db: AsyncSession, question: str) -> tuple[str, list
         keywords = set(q_lower.split())
         relevant = []
         for item in items:
-            text = f"{item.title} {item.description or ''} {item.theory or ''}".lower()
-            overlap = sum(1 for k in keywords if k in text and len(k) > 3)
+            # NOTE: LearnItem has summary/content/healthy_role (no
+            # description/theory columns) — getattr keeps old rows working.
+            blob = " ".join(
+                str(getattr(item, f, None) or "")
+                for f in ("title", "summary", "content", "healthy_role")
+            ).lower()
+            overlap = sum(1 for k in keywords if k in blob and len(k) > 3)
             if overlap > 0:
                 relevant.append((overlap, item))
 
@@ -362,10 +367,12 @@ async def _get_learn_context(db: AsyncSession, question: str) -> tuple[str, list
         citations: list[dict] = []
         for _, item in top:
             parts.append(f"\n### {item.title}")
-            if item.description:
-                parts.append(item.description)
-            if item.theory:
-                parts.append(item.theory[:500])
+            summary = getattr(item, "summary", None)
+            if summary:
+                parts.append(summary)
+            content = getattr(item, "content", None)
+            if content:
+                parts.append(content[:500])
             citations.append({
                 "source": "learn_item",
                 "document_id": str(item.id),

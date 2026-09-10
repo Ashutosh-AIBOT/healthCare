@@ -17,10 +17,20 @@ type Test = {
   sort_order: number;
 };
 
+type TestPage = {
+  items: Test[];
+  page: number;
+  page_size: number;
+  total: number;
+  has_next: boolean;
+};
+
 export default function LearnTestDetailPage() {
   const params = useParams();
   const slug = params?.slug as string;
   const [tests, setTests] = useState<Test[] | null>(null);
+  const [page, setPage] = useState(1);
+  const [hasNext, setHasNext] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,9 +39,10 @@ export default function LearnTestDetailPage() {
     setError(null);
     setLoading(true);
     try {
-      const res = await apiClient<Test[]>(`/api/v1/learn/body-parts/${slug}/tests`);
+      const res = await apiClient<TestPage>(`/api/v1/learn/body-parts/${slug}/tests?page=${page}&page_size=12`);
       if (!res.error) {
-        setTests(res.data || []);
+        setTests(res.data?.items || []);
+        setHasNext(Boolean(res.data?.has_next));
       } else {
         setError(res.error.detail || "Failed to load tests");
       }
@@ -40,7 +51,7 @@ export default function LearnTestDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [slug]);
+  }, [slug, page]);
 
   useEffect(() => {
     void load();
@@ -73,32 +84,27 @@ export default function LearnTestDetailPage() {
       </div>
 
       {tests && tests.length > 0 ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {tests.map((test) => (
-            <Card key={test.id}>
-              <CardHeader>
-                <p className="text-sm font-semibold text-ink">{test.name}</p>
-                {test.fasting_required && (
-                  <span className="mt-1 inline-block rounded-full bg-apricot/20 px-2 py-0.5 text-xs font-semibold text-apricot">Fasting required</span>
-                )}
-              </CardHeader>
-              <CardContent>
-                {test.what_it_checks && (
-                  <div className="mb-2">
-                    <p className="text-xs font-semibold text-muted">What it checks</p>
-                    <p className="text-sm text-ink">{test.what_it_checks}</p>
-                  </div>
-                )}
-                {test.prep_note && (
-                  <div>
-                    <p className="text-xs font-semibold text-muted">Preparation</p>
-                    <p className="text-sm text-ink">{test.prep_note}</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        <>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {tests.map((test) => (
+              <Card key={test.id}>
+                <CardHeader>
+                  <p className="text-sm font-semibold text-ink">{test.name}</p>
+                  {test.fasting_required && <span className="mt-1 inline-block rounded-full bg-apricot/20 px-2 py-0.5 text-xs font-semibold text-apricot">Fasting required</span>}
+                </CardHeader>
+                <CardContent>
+                  {test.what_it_checks && <div className="mb-2"><p className="text-xs font-semibold text-muted">What it checks</p><p className="text-sm text-ink">{test.what_it_checks}</p></div>}
+                  {test.prep_note && <div><p className="text-xs font-semibold text-muted">Preparation</p><p className="text-sm text-ink">{test.prep_note}</p></div>}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+          <div className="flex items-center justify-between pt-2">
+            <button type="button" disabled={page === 1} onClick={() => setPage((value) => Math.max(1, value - 1))} className="rounded-lg border border-line px-3 py-2 text-sm font-semibold text-muted disabled:opacity-40">Previous</button>
+            <span className="text-xs text-muted">Page {page}</span>
+            <button type="button" disabled={!hasNext} onClick={() => setPage((value) => value + 1)} className="rounded-lg border border-line px-3 py-2 text-sm font-semibold text-muted disabled:opacity-40">Next</button>
+          </div>
+        </>
       ) : (
         <EmptyState title="No tests found" description="There are no tests listed for this body part yet." />
       )}

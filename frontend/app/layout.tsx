@@ -1,29 +1,7 @@
-import { Newsreader, Inter, JetBrains_Mono } from "next/font/google";
 import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 import { ThemeProvider } from "@/components/theme-provider";
 import "./globals.css";
-
-const display = Newsreader({
-  subsets: ["latin"],
-  variable: "--font-display",
-  weight: ["400", "500", "600"],
-  display: "swap",
-});
-
-const sans = Inter({
-  subsets: ["latin"],
-  variable: "--font-sans",
-  weight: ["400", "500", "600"],
-  display: "swap",
-});
-
-const mono = JetBrains_Mono({
-  subsets: ["latin"],
-  variable: "--font-mono",
-  weight: ["400", "500"],
-  display: "swap",
-});
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 const ogImage = `${siteUrl}/og-default.png`;
@@ -128,12 +106,15 @@ const themeInitScript = `(function(){try{var k='aarogya-theme',d=document.docume
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning className={`${display.variable} ${sans.variable} ${mono.variable}`}>
+    <html lang="en" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body className="min-h-dvh bg-foam text-ink tabular">
         <ThemeProvider>
+          <a href="#main-content" className="sr-only fixed left-4 top-4 z-[100] rounded-md bg-ink px-4 py-2 text-sm font-semibold text-paper focus:not-sr-only">
+            Skip to main content
+          </a>
           <Script
             id="ld-json-organization"
             type="application/ld+json"

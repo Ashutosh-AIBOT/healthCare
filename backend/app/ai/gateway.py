@@ -32,7 +32,7 @@ class Provider(str, Enum):
 # Default models per provider
 DEFAULT_MODELS = {
     Provider.NVIDIA: "nvidia/nemotron-3.5-lightning-30b-a3b",
-    Provider.GROQ:   "llama-3.3-70b-versatile",   # fastest streaming model
+    Provider.GROQ:   "openai/gpt-oss-120b",   # fastest streaming model
     Provider.OPENAI: "gpt-4o-mini",
     Provider.GEMINI: "gemini-1.5-flash",
     Provider.OLLAMA: "llama3",
@@ -315,6 +315,7 @@ class LLMGateway:
         room_name: str,
         participant_identity: str,
         participant_name: str,
+        metadata: str | None = None,
     ) -> str:
         """Generate a LiveKit access token for a voice room."""
         lk_api_key = os.environ.get("LIVEKIT_API_KEY", "")
@@ -326,7 +327,7 @@ class LLMGateway:
             )
         try:
             from livekit.api import AccessToken, VideoGrants
-            token = (
+            builder = (
                 AccessToken(lk_api_key, lk_api_secret)
                 .with_identity(participant_identity)
                 .with_name(participant_name)
@@ -337,10 +338,17 @@ class LLMGateway:
                     can_subscribe=True,
                 ))
             )
-            return token.to_jwt()
+            if metadata is not None:
+                builder = builder.with_metadata(metadata)
+            return builder.to_jwt()
         except ImportError:
             # livekit-api not installed, return placeholder
             raise ValueError("livekit-api package required. Run: pip install livekit-api")
+
+    # NOTE: no explicit agent dispatch here by design. The worker joins via
+    # LiveKit's implicit auto-dispatch on participant join (reference
+    # AgentTalk flow). Dispatching explicitly as well creates two agents
+    # in one room and doubles inference spend.
 
     # ------------------------------------------------------------------
     # Individual provider callers
@@ -554,6 +562,11 @@ class LLMGateway:
         )
 
     async def _call_mock(self, prompt: str) -> LLMResponse:
+        if os.environ.get("APP_ENV") not in ("test", "ci"):
+            raise ValueError(
+                "No AI provider key configured. "
+                "Add NVIDIA or Groq key in Profile > AI Provider Keys."
+            )
         text = (
             f"[MOCK] Simulated response to: '{prompt[:80]}...'\n\n"
             "This is a demo response. Add an NVIDIA or Groq API key in Profile > "

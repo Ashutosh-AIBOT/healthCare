@@ -102,6 +102,12 @@ export default function AppHomePage() {
     void loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    const refresh = () => void loadData();
+    window.addEventListener("aarogya:data-changed", refresh);
+    return () => window.removeEventListener("aarogya:data-changed", refresh);
+  }, [loadData]);
+
   const firstName = me?.full_name?.split(" ")[0] || "there";
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
@@ -123,8 +129,8 @@ export default function AppHomePage() {
     );
   }
 
-  const caloriePct = nutrition ? Math.min(100, Math.round((nutrition.calories / (nutrition.target_calories || 2000)) * 100)) : 75;
-  const todoPct = timeStats && timeStats.todo_total > 0 ? Math.round((timeStats.todo_done / timeStats.todo_total) * 100) : 100;
+  const caloriePct = nutrition ? Math.min(100, Math.round((nutrition.calories / (nutrition.target_calories || 1)) * 100)) : 0;
+  const todoPct = timeStats && timeStats.todo_total > 0 ? Math.round((timeStats.todo_done / timeStats.todo_total) * 100) : 0;
 
   return (
     <div className="space-y-8">
@@ -151,7 +157,7 @@ export default function AppHomePage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Calories Consumed"
-          value={`${nutrition?.calories ?? 1640} / ${nutrition?.target_calories ?? 2150}`}
+          value={`${nutrition?.calories ?? 0} / ${nutrition?.target_calories ?? 0}`}
           trend={`${caloriePct}% of daily budget`}
           color="teal"
           icon={<Flame className="h-[18px] w-[18px]" />}
@@ -159,15 +165,15 @@ export default function AppHomePage() {
         />
         <StatCard
           label="Daily Adherence Score"
-          value={`${timeStats?.score ?? 88} / 100`}
-          trend={`${timeStats?.block_done ?? 3}/${timeStats?.block_total ?? 5} blocks on track`}
+          value={`${timeStats?.score ?? 0} / 100`}
+          trend={`${timeStats?.block_done ?? 0}/${timeStats?.block_total ?? 0} blocks on track`}
           color="gold"
           icon={<Target className="h-[18px] w-[18px]" />}
-          progress={timeStats?.score ?? 88}
+          progress={timeStats?.score ?? 0}
         />
         <StatCard
           label="Today's Habits & Todos"
-          value={`${timeStats?.todo_done ?? 4} / ${timeStats?.todo_total ?? 6}`}
+          value={`${timeStats?.todo_done ?? 0} / ${timeStats?.todo_total ?? 0}`}
           trend={`${todoPct}% completed`}
           color="coral"
           icon={<CheckCircle2 className="h-[18px] w-[18px]" />}
@@ -175,11 +181,11 @@ export default function AppHomePage() {
         />
         <StatCard
           label="Water Intake"
-          value={`${nutrition?.water_ml ?? 2400} ml`}
-          trend={`${Math.round(((nutrition?.water_ml ?? 2400) / (nutrition?.water_target_ml ?? 3000)) * 100)}% of goal`}
+          value={`${nutrition?.water_ml ?? 0} ml`}
+          trend={`${Math.round(((nutrition?.water_ml ?? 0) / (nutrition?.water_target_ml ?? 3000)) * 100)}% of goal`}
           color="blue"
           icon={<Droplets className="h-[18px] w-[18px]" />}
-          progress={Math.round(((nutrition?.water_ml ?? 2400) / (nutrition?.water_target_ml ?? 3000)) * 100) || 80}
+          progress={Math.min(100, Math.round(((nutrition?.water_ml ?? 0) / (nutrition?.water_target_ml ?? 3000)) * 100))}
         />
       </div>
 
@@ -205,11 +211,11 @@ export default function AppHomePage() {
                 <div>
                   <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">Breakfast</span>
                   <p className="text-xs font-medium text-ink mt-0.5">
-                    {mealPlan.plan_json.breakfast[0]?.name || "Oatmeal with chia seeds & almonds"}
+                  {mealPlan.plan_json.breakfast[0]?.name || "Not planned"}
                   </p>
                 </div>
                 <span className="text-xs font-semibold text-ink bg-surface px-2.5 py-1 rounded-lg border border-line/40">
-                  {mealPlan.plan_json.breakfast[0]?.calories || 320} kcal
+                  {mealPlan.plan_json.breakfast[0]?.calories || 0} kcal
                 </span>
               </div>
             )}
@@ -219,11 +225,11 @@ export default function AppHomePage() {
                 <div>
                   <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">Lunch</span>
                   <p className="text-xs font-medium text-ink mt-0.5">
-                    {mealPlan.plan_json.lunch[0]?.name || "Brown rice with dal & grilled paneer"}
+                    {mealPlan.plan_json.lunch[0]?.name || "Not planned"}
                   </p>
                 </div>
                 <span className="text-xs font-semibold text-ink bg-surface px-2.5 py-1 rounded-lg border border-line/40">
-                  {mealPlan.plan_json.lunch[0]?.calories || 420} kcal
+                  {mealPlan.plan_json.lunch[0]?.calories || 0} kcal
                 </span>
               </div>
             )}
@@ -233,18 +239,18 @@ export default function AppHomePage() {
                 <div>
                   <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">Dinner</span>
                   <p className="text-xs font-medium text-ink mt-0.5">
-                    {mealPlan.plan_json.dinner[0]?.name || "Quinoa bowl with steamed veggies"}
+                    {mealPlan.plan_json.dinner[0]?.name || "Not planned"}
                   </p>
                 </div>
                 <span className="text-xs font-semibold text-ink bg-surface px-2.5 py-1 rounded-lg border border-line/40">
-                  {mealPlan.plan_json.dinner[0]?.calories || 360} kcal
+                  {mealPlan.plan_json.dinner[0]?.calories || 0} kcal
                 </span>
               </div>
             )}
           </div>
 
           <div className="pt-2 flex items-center justify-between text-xs text-muted border-t border-line/40">
-            <span>Followed: <strong className="text-ink">{mealPlan?.days_followed ?? 3} days</strong></span>
+            <span>Followed: <strong className="text-ink">{mealPlan?.days_followed ?? 0} days</strong></span>
             <span>Source: <strong className="text-primary">{mealPlan?.created_by === 'XOMNI' ? 'AI Optimized' : 'Personal Plan'}</strong></span>
           </div>
         </div>
@@ -287,12 +293,12 @@ export default function AppHomePage() {
           <div className="space-y-2 pt-2 border-t border-line/40">
             <div className="flex justify-between text-xs">
               <span className="text-muted">Protein Goal Progress</span>
-              <span className="font-semibold text-ink">{nutrition?.protein_g ?? 94}g / {nutrition?.target_protein_g ?? 120}g</span>
+              <span className="font-semibold text-ink">{nutrition?.protein_g ?? 0}g / {nutrition?.target_protein_g ?? 0}g</span>
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-mist">
               <div
                 className="h-full rounded-full bg-primary transition-all duration-300"
-                style={{ width: `${Math.min(100, Math.round(((nutrition?.protein_g ?? 94) / (nutrition?.target_protein_g ?? 120)) * 100))}%` }}
+                style={{ width: `${Math.min(100, Math.round(((nutrition?.protein_g ?? 0) / (nutrition?.target_protein_g || 1)) * 100))}%` }}
               />
             </div>
           </div>

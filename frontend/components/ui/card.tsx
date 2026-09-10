@@ -2,18 +2,12 @@ import { cn } from "@/lib/utils";
 import { HTMLAttributes, type ReactNode } from "react";
 
 export function Card({ className, children, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return (
-    <div className={cn("rounded-[1.75rem] bg-surface p-1.5 shadow-card", className)} {...props}>
-      <div className="rounded-[calc(1.75rem-0.375rem)] bg-surface p-6 md:p-8">
-        {children}
-      </div>
-    </div>
-  );
+  return <div className={cn("rounded-xl border border-border bg-surface shadow-card", className)} {...props}>{children}</div>;
 }
 
 export function CardHeader({ className, children, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className={cn("mb-4", className)} {...props}>
+    <div className={cn("mb-4 p-5 pb-0 md:p-6 md:pb-0", className)} {...props}>
       {children}
     </div>
   );
@@ -21,7 +15,7 @@ export function CardHeader({ className, children, ...props }: HTMLAttributes<HTM
 
 export function CardContent({ className, children, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className={cn("", className)} {...props}>
+    <div className={cn("p-5 md:p-6", className)} {...props}>
       {children}
     </div>
   );

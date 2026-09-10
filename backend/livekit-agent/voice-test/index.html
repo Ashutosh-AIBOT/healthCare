@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Agent Test</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/livekit-client/dist/livekit-client.umd.min.js"></script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen flex items-center justify-center">
+    <div class="max-w-md w-full mx-4">
+        <div class="bg-gray-800 rounded-2xl p-8 shadow-2xl">
+            <h1 class="text-2xl font-bold mb-2 text-center">Voice Agent Test</h1>
+            <p class="text-gray-400 text-center mb-8">Standalone LiveKit + Groq voice test</p>
+
+            <div id="status" class="text-center mb-6">
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm bg-gray-700 text-gray-300">
+                    Idle
+                </span>
+            </div>
+
+            <button id="startBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-full transition-colors mb-4">
+                Start Conversation
+            </button>
+
+            <button id="stopBtn" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-full transition-colors hidden">
+                End Call
+            </button>
+
+            <div id="logs" class="mt-6 bg-gray-900 rounded-lg p-4 h-64 overflow-y-auto font-mono text-sm">
+                <div class="text-gray-500">Logs will appear here...</div>
+            </div>
+
+            <div id="transcript" class="mt-4 bg-gray-900 rounded-lg p-4 min-h-[100px]">
+                <div class="text-gray-500 text-sm">Transcript will appear here...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const statusEl = document.getElementById('status');
+        const logsEl = document.getElementById('logs');
+        const transcriptEl = document.getElementById('transcript');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+
+        let room = null;
+        let localAudioTrack = null;
+
+        function log(msg) {
+            const div = document.createElement('div');
+            div.className = 'text-green-400 mb-1';
+            div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            logsEl.appendChild(div);
+            logsEl.scrollTop = logsEl.scrollHeight;
+        }
+
+        function updateStatus(text, color) {
+            statusEl.innerHTML = `<span class="inline-flex items-center px-3 py-1 rounded-full text-sm ${color}">${text}</span>`;
+        }
+
+        function appendTranscript(text, isUser = true) {
+            const div = document.createElement('div');
+            div.className = `mb-2 ${isUser ? 'text-blue-300' : 'text-green-300'}`;
+            div.innerHTML = `<strong>${isUser ? 'You' : 'Agent'}:</strong> ${text}`;
+            transcriptEl.appendChild(div);
+            transcriptEl.scrollTop = transcriptEl.scrollHeight;
+        }
+
+        startBtn.addEventListener('click', startCall);
+        stopBtn.addEventListener('click', endCall);
+
+        async function startCall() {
+            try {
+                startBtn.disabled = true;
+                updateStatus('Connecting...', 'bg-yellow-600 text-white');
+                log('Requesting microphone access...');
+
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                localAudioTrack = new LivekitClient.LocalAudioTrack(stream.getAudioTracks()[0]);
+                log('Microphone access granted');
+
+                log('Fetching token...');
+                const tokenRes = await fetch('http://localhost:8000/api/token', { method: 'POST' });
+                if (!tokenRes.ok) throw new Error('Token request failed');
+                const tokenData = await tokenRes.json();
+                log(`Token received for room: ${tokenData.room}`);
+
+                updateStatus('Connecting to room...', 'bg-yellow-600 text-white');
+                room = new LivekitClient.Room();
+
+                room.on(LivekitClient.RoomEvent.Connected, () => {
+                    log('Connected to room');
+                    updateStatus('Connected', 'bg-green-600 text-white');
+                    stopBtn.classList.remove('hidden');
+                });
+
+                room.on(LivekitClient.RoomEvent.Disconnected, () => {
+                    log('Disconnected');
+                    updateStatus('Disconnected', 'bg-gray-600 text-white');
+                    startBtn.disabled = false;
+                    stopBtn.classList.add('hidden');
+                });
+
+                room.on(LivekitClient.RoomEvent.ParticipantConnected, (p) => {
+                    log(`Participant joined: ${p.identity}`);
+                    updateStatus('Agent joined - listening', 'bg-green-600 text-white');
+                });
+
+                room.on(LivekitClient.RoomEvent.ParticipantDisconnected, (p) => {
+                    log(`Participant left: ${p.identity}`);
+                });
+
+                room.on(LivekitClient.RoomEvent.ActiveSpeakersChanged, (speakers) => {
+                    const remoteSpeaking = speakers.some(p => !p.isLocal && p.isSpeaking);
+                    const localSpeaking = speakers.some(p => p.isLocal && p.isSpeaking);
+                    if (remoteSpeaking) {
+                        updateStatus('Agent speaking...', 'bg-purple-600 text-white');
+                    } else if (localSpeaking) {
+                        updateStatus('You are speaking...', 'bg-blue-600 text-white');
+                    } else {
+                        updateStatus('Listening', 'bg-green-600 text-white');
+                    }
+                });
+
+                room.on(LivekitClient.RoomEvent.TrackSubscribed, (track) => {
+                    log(`Track subscribed: ${track.kind}`);
+                    if (track.kind === 'audio') {
+                        track.play();
+                    }
+                });
+
+                room.on(LivekitClient.RoomEvent.TrackUnsubscribed, (track) => {
+                    log(`Track unsubscribed: ${track.kind}`);
+                });
+
+                room.on(LivekitClient.RoomEvent.DataReceived, (data, participant) => {
+                    try {
+                        const text = new TextDecoder().decode(data.payload);
+                        log(`Data received: ${text}`);
+                    } catch (e) {
+                        log(`Data received (binary)`);
+                    }
+                });
+
+                room.on(LivekitClient.RoomEvent.TranscriptionReceived, (segments, participant) => {
+                    segments.forEach(seg => {
+                        if (seg.final && seg.text.trim()) {
+                            const isUser = participant && participant.isLocal;
+                            appendTranscript(seg.text, isUser);
+                            log(`Transcription${isUser ? ' (you)' : ' (agent)'}: ${seg.text}`);
+                        }
+                    });
+                });
+
+                room.on(LivekitClient.RoomEvent.Error, (error) => {
+                    log(`Error: ${error.message}`);
+                    updateStatus('Error', 'bg-red-600 text-white');
+                });
+
+                await room.connect(tokenData.url, tokenData.token, { audio: true, video: false });
+                log('Connected successfully');
+
+            } catch (err) {
+                log(`Error: ${err.message}`);
+                updateStatus('Error', 'bg-red-600 text-white');
+                startBtn.disabled = false;
+            }
+        }
+
+        function endCall() {
+            if (room) {
+                room.disconnect();
+                room = null;
+            }
+            if (localAudioTrack) {
+                localAudioTrack.stop();
+                localAudioTrack = null;
+            }
+            stopBtn.classList.add('hidden');
+            startBtn.disabled = false;
+            updateStatus('Idle', 'bg-gray-700 text-white');
+            log('Call ended');
+        }
+    </script>
+</body>
+</html>

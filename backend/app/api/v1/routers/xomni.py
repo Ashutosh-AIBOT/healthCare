@@ -23,6 +23,7 @@ from app.ai.gateway import LLMGateway, Provider
 from app.core.deps import get_current_user
 from app.db.session import get_db
 from app.models.user import User
+from app.models.xomni import XomniConversation
 from app.services import xomni_service, points_service
 
 router = APIRouter(prefix="/xomni", tags=["xomni"])
@@ -36,6 +37,8 @@ class ChatRequest(BaseModel):
     conversation_id: str | None = None
     user_prompt_prefix: str | None = None
     nutrition_context: dict | None = None
+    member_id: uuid.UUID | None = None
+    document_id: uuid.UUID | None = None
     stream: bool = True            # True = Groq SSE streaming
 
 
@@ -46,6 +49,12 @@ class ChatResponse(BaseModel):
     citations: list[dict] = []
     emergency: bool = False
     action: dict | None = None
+    applied: dict | None = None
+
+
+class ActionDecisionRequest(BaseModel):
+    conversation_id: uuid.UUID
+    edited_action: dict | None = None  # user edits from the preview card
 
 
 class ConversationOut(BaseModel):
@@ -69,6 +78,7 @@ class TimetableActionRequest(BaseModel):
 class LiveKitTokenRequest(BaseModel):
     room_name: str | None = None   # auto-generated if omitted
     conversation_id: str | None = None
+    context: str | None = None
 
 
 # ─────────────────────────── Chat (NVIDIA + Groq streaming) ─────────────────
@@ -103,6 +113,9 @@ async def chat(
         conversation_id=conv_id,
         user_prompt_prefix=payload.user_prompt_prefix or current_user.ai_context,
         nutrition_context=payload.nutrition_context,
+        family_id=current_user.family_id,
+        member_id=payload.member_id,
+        document_id=payload.document_id,
     )
 
     if result.get("emergency"):
@@ -119,6 +132,7 @@ async def chat(
     conv_id_str: str = result.get("conversation_id", "")
     msg_id_str: str = result.get("message_id", "")
     action = result.get("action")
+    citations = result.get("citations", [])
 
     async def event_stream() -> AsyncIterator[bytes]:
         # First emit metadata
@@ -128,6 +142,8 @@ async def chat(
                 "conversation_id": conv_id_str,
                 "message_id": msg_id_str,
                 "action": action,
+                "applied": result.get("applied"),
+                "citations": citations,
             })
             + "\n\n"
         ).encode()
@@ -187,6 +203,46 @@ async def chat(
     )
 
 
+@router.post("/actions/confirm", response_model=dict)
+async def confirm_action(
+    payload: ActionDecisionRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Apply a pending Xomni proposal after explicit user confirmation."""
+    if current_user.family_id is None:
+        raise HTTPException(status_code=400, detail="Join a family first to use Xomni actions.")
+    try:
+        result = await xomni_service.apply_pending_action(
+            db,
+            user_id=current_user.id,
+            family_id=current_user.family_id,
+            conversation_id=payload.conversation_id,
+            edited_action=payload.edited_action,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    # Server-owned result card data: no client-side message forging needed.
+    result["confirmed"] = True
+    return result
+
+
+@router.post("/actions/reject", response_model=dict)
+async def reject_action(
+    payload: ActionDecisionRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Discard a pending Xomni proposal without changing user data."""
+    conversation = await db.get(XomniConversation, payload.conversation_id)
+    if not conversation or conversation.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+    conversation.pending_action = None
+    conversation.pending_action_expires_at = None
+    await db.flush()
+    return {"rejected": True}
+
+
 # ─────────────────────────── Voice (Groq Whisper STT) ───────────────────────
 
 
@@ -243,20 +299,40 @@ async def livekit_token(
     The browser LiveKit SDK uses this token to connect to the room,
     capture microphone audio, and stream it for STT processing.
 
+    Token-only: the worker joins via LiveKit's implicit auto-dispatch on
+    participant join (same as the reference AgentTalk flow). No explicit
+    dispatch here — dispatching twice creates two agents in one room.
+
+    Hard limit: ONE active voice call app-wide (free-tier guard). A second
+    caller gets 409 VOICE_BUSY while any room has participants.
+
     Requires: LIVEKIT_API_KEY + LIVEKIT_API_SECRET in environment.
     """
+    from app.services import voice_lock
+
     room = payload.room_name or f"xomni-{current_user.id}-{payload.conversation_id or uuid.uuid4().hex[:8]}"
     identity = str(current_user.id)
     name = current_user.full_name or current_user.email
 
+    acquired, _reason = await voice_lock.acquire_voice_call(room)
+    if not acquired:
+        raise HTTPException(
+            status_code=409,
+            detail="Someone is on a live voice call right now. Please try again in a few minutes.",
+        )
+
     gateway = LLMGateway(db, user_id=str(current_user.id))
+    context_val = payload.context or "general"
+    metadata = json.dumps({"user_id": str(current_user.id), "context": context_val})
     try:
         token = await gateway.create_livekit_token(
             room_name=room,
             participant_identity=identity,
             participant_name=name,
+            metadata=metadata,
         )
     except ValueError as e:
+        await voice_lock.release_voice_call(room)
         raise HTTPException(status_code=400, detail=str(e))
 
     import os
@@ -267,10 +343,52 @@ async def livekit_token(
         "room_name": room,
         "livekit_url": livekit_url,
         "participant_identity": identity,
+        "context": context_val,
     }
 
 
+class HangupRequest(BaseModel):
+    room_name: str
+
+
+@router.delete("/voice/hangup", response_model=dict)
+async def voice_hangup(
+    payload: HangupRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> dict:
+    """Release the single voice-call slot after hanging up (best-effort).
+
+    The 12-minute lock TTL covers missed hangups; this just frees the slot
+    immediately for the next caller.
+    """
+    from app.services import voice_lock
+
+    _ = current_user  # authenticated, but the slot is global by design
+    released = await voice_lock.release_voice_call(payload.room_name)
+    return {"released": released}
+
+
 # ─────────────────────────── Conversations ──────────────────────────────────
+
+
+@router.get("/context-summary", response_model=dict)
+async def context_summary(
+    mode: str = "general",
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Compact own-data context for the realtime voice worker.
+
+    Same assembly as chat turns (mode-aware, summarized, citations
+    included) so voice replies are personalized without refetching
+    every record. Empty block when nothing is on file.
+    """
+    if mode not in ("general", "food", "timetable", "reports", "fitness"):
+        mode = "general"
+    block, citations = await xomni_service._assemble_user_context(
+        db, user_id=current_user.id, mode=mode, message=""
+    )
+    return {"context": block, "citations": citations, "mode": mode}
 
 
 @router.get("/conversations", response_model=list[ConversationOut])
@@ -337,13 +455,10 @@ async def timetable_action(
     if current_user.family_id is None:
         raise HTTPException(status_code=400, detail="Join a family first to use timetable features.")
 
-    result = await points_service.parse_xomni_timetable_intent(
-        db,
-        user_id=current_user.id,
-        message=payload.message,
-        family_id=current_user.family_id,
+    raise HTTPException(
+        status_code=409,
+        detail="Use the Xomni chat to receive a preview and confirm timetable changes. Direct timetable actions are disabled.",
     )
-    return result
 
 
 # ─────────────────────────── Points ─────────────────────────────────────────

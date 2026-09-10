@@ -6,6 +6,7 @@ import uuid
 from datetime import date, datetime
 
 from sqlalchemy import Boolean, Date, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -69,6 +70,12 @@ class Todo(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     due_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    start_minute: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    end_minute: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    recurrence_rule: Mapped[str] = mapped_column(String(20), nullable=False, default="once")
+    recurrence_until: Mapped[date | None] = mapped_column(Date, nullable=True)
+    recurrence_days: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    series_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default=TodoStatus.PENDING)
     priority: Mapped[str] = mapped_column(String(20), nullable=False, default=TodoPriority.NORMAL)
     created_by: Mapped[str] = mapped_column(String(20), nullable=False, default="USER")  # USER | XOMNI

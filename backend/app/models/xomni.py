@@ -30,6 +30,8 @@ class XomniConversation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     telegram_chat_id: Mapped[str | None] = mapped_column(String(60), nullable=True, index=True)
     user_prompt_prefix: Mapped[str | None] = mapped_column(Text, nullable=True)
     # User's persistent instructions / dietary restrictions
+    pending_action: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    pending_action_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     messages: Mapped[list["XomniMessage"]] = relationship(
         back_populates="conversation", cascade="all, delete-orphan",
@@ -122,6 +124,22 @@ class MealPlanHistory(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     valid_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class NutritionLog(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "nutrition_logs"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    logged_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    entry_type: Mapped[str] = mapped_column(String(20), nullable=False)  # meal | water
+    meal_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    item_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    calories: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    protein_g: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    carbs_g: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    fat_g: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    water_ml: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 # ---------------------------------------------------------------------------

@@ -4,6 +4,7 @@ import { SiteNav } from "@/components/marketing/site-nav";
 import { SiteFooter } from "@/components/marketing/site-footer";
 import { Reveal } from "@/components/ui/reveal";
 import { Button } from "@/components/ui/button";
+import { ArrowUpRight, Check, FileText, LockKeyhole, ShieldCheck } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "Aarogya — Your family's health records, understood",
@@ -51,39 +52,82 @@ export default function HomePage() {
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(orgJsonLd) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }} />
       <SiteNav />
-      <main>
-        {/* Hero: flat dark, type-scale only — the one load entrance on the page */}
-        <section className="relative isolate min-h-dvh overflow-hidden bg-home-dark">
-          <div className="mx-auto flex min-h-dvh max-w-6xl flex-col justify-end px-5 pb-16 pt-32 md:justify-center md:px-8 md:pb-28 md:pt-24">
-            <p className="animate-home-rise font-display text-[clamp(4rem,14vw,8.75rem)] font-semibold leading-[0.86] tracking-[-0.045em] text-home-primary-dark">
-              Aarogya
-            </p>
-            <h1 className="mt-7 max-w-[18ch] animate-home-rise text-balance text-[clamp(1.65rem,3.8vw,2.5rem)] font-bold leading-[1.15] tracking-tight text-home-primary-dark [animation-delay:80ms]">
-              Your family&apos;s health records, understood.
-            </h1>
-            <p className="mt-5 max-w-[560px] animate-home-rise text-pretty text-lg leading-relaxed text-home-secondary-dark [animation-delay:160ms]">
-              A lab report becomes structured values, plain-language explanation with citations, and the
-              next right checkup — never a diagnosis.
-            </p>
-            <div className="mt-11 flex flex-wrap items-center gap-3 animate-home-rise [animation-delay:240ms]">
-              <Link href="/register">
-                <Button size="lg" className="group bg-home-gold text-home-dark shadow-lift hover:bg-home-gold/90">
-                  Start with your family
-                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-home-dark/15 transition-transform duration-500 ease-soft group-hover:translate-x-0.5">
-                    →
-                  </span>
-                </Button>
-              </Link>
-              <Link href="#how">
-                <Button size="lg" className="border border-home-border bg-home-surface text-home-primary-dark hover:border-home-border">
-                  See the loop
-                </Button>
-              </Link>
+      <main id="main-content">
+        <section className="relative isolate min-h-[92dvh] overflow-hidden bg-home-dark">
+          <div className="mx-auto grid min-h-[92dvh] max-w-7xl items-center gap-14 px-5 pb-20 pt-32 md:grid-cols-[0.9fr_1.1fr] md:gap-16 md:px-8 md:pb-24 md:pt-24">
+            <div>
+              <p className="animate-home-rise text-xs font-semibold uppercase tracking-[0.12em] text-home-gold">
+                Family health, made legible
+              </p>
+              <h1 className="mt-5 max-w-[11ch] animate-home-rise font-display text-[clamp(3.5rem,7vw,6.8rem)] font-semibold leading-[0.92] tracking-[-0.04em] text-home-primary-dark [animation-delay:80ms]">
+                Care starts with clarity.
+              </h1>
+              <p className="mt-7 max-w-[500px] animate-home-rise text-pretty text-lg leading-relaxed text-home-secondary-dark [animation-delay:160ms]">
+                Aarogya turns scattered reports into a trusted family health record and a clear next step.
+              </p>
+              <div className="mt-9 flex flex-wrap items-center gap-3 animate-home-rise [animation-delay:240ms]">
+                <Link href="/register">
+                  <Button size="lg" className="group bg-home-gold text-home-dark shadow-lift hover:bg-home-gold/90">
+                    Start with your family
+                    <ArrowUpRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+                  </Button>
+                </Link>
+                <Link href="#how">
+                  <Button size="lg" className="border border-home-border bg-home-surface text-home-primary-dark hover:border-home-gold/50">
+                    See the loop
+                  </Button>
+                </Link>
+              </div>
+              <p className="mt-8 flex items-center gap-2 text-[13px] text-home-secondary-dark [animation-delay:320ms]">
+                <LockKeyhole className="h-3.5 w-3.5 text-home-gold" />
+                Consent first. No silent diagnosis.
+              </p>
             </div>
-            <p className="mt-9 max-w-[480px] animate-home-rise text-[13px] leading-relaxed text-home-secondary-dark [animation-delay:320ms]">
-              Not a medical device. Aarogya explains and coordinates care — it does not diagnose,
-              prescribe, or replace a clinician.
-            </p>
+
+            <div className="relative animate-home-rise [animation-delay:180ms]" aria-label="Aarogya report explanation preview">
+              <div className="relative overflow-hidden rounded-[1.5rem] border border-home-border bg-home-surface shadow-lift">
+                <div className="flex items-center justify-between border-b border-home-border px-5 py-4">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-home-primary-dark">
+                    <FileText className="h-4 w-4 text-home-gold" />
+                    May health review
+                  </div>
+                  <span className="rounded-full border border-home-border px-2.5 py-1 font-mono text-[10px] text-home-secondary-dark">PRIVATE</span>
+                </div>
+                <div className="grid gap-5 p-5 sm:grid-cols-[0.75fr_1.25fr] sm:p-7">
+                  <div className="rounded-xl border border-home-border bg-home-dark p-5">
+                    <div className="flex items-center justify-between text-[11px] text-home-secondary-dark">
+                      <span>HbA1c</span>
+                      <span>Report 02</span>
+                    </div>
+                    <p className="mt-7 font-display text-5xl font-semibold tracking-tight text-home-primary-dark">5.8</p>
+                    <p className="mt-2 text-xs text-home-secondary-dark">% · lab range 4.0–5.6</p>
+                    <div className="mt-8 h-1.5 overflow-hidden rounded-full bg-home-border">
+                      <div className="h-full w-[62%] rounded-full bg-home-gold" />
+                    </div>
+                    <p className="mt-3 text-[11px] text-home-gold">Worth watching</p>
+                  </div>
+                  <div className="flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.1em] text-home-gold">
+                        <ShieldCheck className="h-4 w-4" /> Explained with context
+                      </div>
+                      <h2 className="mt-4 font-display text-2xl font-semibold leading-tight text-home-primary-dark">A small signal, not a verdict.</h2>
+                      <p className="mt-3 text-sm leading-relaxed text-home-secondary-dark">Your result sits just above this lab&apos;s range. Compare the next report and discuss patterns with a clinician.</p>
+                    </div>
+                    <div className="mt-7 border-t border-home-border pt-4">
+                      <p className="text-[11px] uppercase tracking-[0.1em] text-home-secondary-dark">Next right check</p>
+                      <div className="mt-2 flex items-center gap-2 text-sm font-semibold text-home-primary-dark">
+                        <Check className="h-4 w-4 text-home-gold" /> Add a follow-up report in 3 months
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between border-t border-home-border bg-home-dark/60 px-5 py-3 text-[11px] text-home-secondary-dark">
+                  <span>Source: your uploaded report</span>
+                  <span className="flex items-center gap-1 text-home-gold">View details <ArrowUpRight className="h-3 w-3" /></span>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -134,10 +178,7 @@ export default function HomePage() {
         <section id="trust" className="relative bg-home-light py-24 md:py-36">
           <div className="relative mx-auto max-w-6xl px-5 md:px-8">
             <Reveal durationMs={400} distancePx={12}>
-              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-home-secondary-light">
-                Built for trust
-              </p>
-              <h2 className="mt-4 max-w-2xl font-display text-[clamp(2.1rem,4.6vw,2.5rem)] font-semibold leading-[1.04] tracking-tight text-home-primary-light">
+              <h2 className="max-w-2xl font-display text-[clamp(2.1rem,4.6vw,2.5rem)] font-semibold leading-[1.04] tracking-tight text-home-primary-light">
                 Consent first. Citations always. No silent diagnosis.
               </h2>
             </Reveal>

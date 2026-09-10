@@ -43,7 +43,7 @@ export function SiteNav() {
           "pointer-events-auto flex w-full max-w-5xl items-center justify-between gap-4 rounded-full border px-4 py-2.5 backdrop-blur-xl transition-[background-color,border-color] duration-250 ease-soft md:px-5",
           !scrolled && "border-transparent bg-transparent",
           scrolled && !overLight && "border-home-border/80 bg-home-dark/60",
-          scrolled && overLight && "border-home-light-border/80 bg-white/70",
+          scrolled && overLight && "border-home-light-border/80 bg-home-light/90",
         )}
         aria-label="Primary"
       >
@@ -103,7 +103,7 @@ export function SiteNav() {
       {open ? (
         <div className={cn(
           "pointer-events-auto absolute inset-x-4 top-[4.5rem] rounded-3xl border p-6 shadow-lift backdrop-blur-xl md:hidden",
-          overLight ? "border-home-light-border/70 bg-white/95" : "border-home-border/70 bg-home-dark/95",
+          overLight ? "border-home-light-border/70 bg-home-light/95" : "border-home-border/70 bg-home-dark/95",
         )}>
           <ul className="flex flex-col gap-4">
             {links.map((l) => (

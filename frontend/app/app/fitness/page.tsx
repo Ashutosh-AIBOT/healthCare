@@ -133,6 +133,12 @@ export default function FitnessPage() {
     void loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    const refresh = () => void loadData();
+    window.addEventListener("aarogya:data-changed", refresh);
+    return () => window.removeEventListener("aarogya:data-changed", refresh);
+  }, [loadData]);
+
   const handleUpdateLevel = async (newLevel: number) => {
     await apiClient("/api/v1/fitness/profile", {
       method: "PUT",
@@ -308,7 +314,7 @@ export default function FitnessPage() {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="font-semibold text-ink text-lg flex items-center gap-2">
-              <Trophy className="h-5 w-5 text-amber-500" />
+              <Trophy className="h-5 w-5 text-accent-teal" />
               Fitness Journey Level
             </h2>
             <p className="text-xs text-muted">Select your progression stage to recalibrate your recommendations</p>
@@ -397,7 +403,7 @@ export default function FitnessPage() {
 
       {/* Log Workout Modal */}
       {isLogModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="relative w-full max-w-md rounded-[2rem] border border-line bg-surface p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-line/40 pb-3">
               <h3 className="font-semibold text-ink text-base">Log Workout Activity</h3>

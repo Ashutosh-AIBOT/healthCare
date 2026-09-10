@@ -59,9 +59,9 @@ const AI_PROVIDERS = [
     subtitle: "Streaming + Whisper STT (voice input)",
     placeholder: "gsk_...",
     docsUrl: "https://console.groq.com/keys",
-    color: "text-amber-600",
+    color: "text-accent-water",
     badge: "Voice + Stream",
-    badgeColor: "bg-amber-100 text-amber-700",
+    badgeColor: "bg-accent-water/15 text-accent-water",
   },
   {
     id: "openai",
@@ -69,9 +69,9 @@ const AI_PROVIDERS = [
     subtitle: "Fallback LLM (GPT-4o-mini)",
     placeholder: "sk-...",
     docsUrl: "https://platform.openai.com/api-keys",
-    color: "text-blue-600",
+    color: "text-accent-water",
     badge: "Fallback",
-    badgeColor: "bg-blue-100 text-blue-700",
+    badgeColor: "bg-accent-water/15 text-accent-water",
   },
   {
     id: "gemini",
@@ -79,9 +79,9 @@ const AI_PROVIDERS = [
     subtitle: "Fallback LLM (Gemini 1.5 Flash)",
     placeholder: "AIza...",
     docsUrl: "https://aistudio.google.com/app/apikey",
-    color: "text-violet-600",
+    color: "text-accent-teal",
     badge: "Fallback",
-    badgeColor: "bg-violet-100 text-violet-700",
+    badgeColor: "bg-accent-teal/15 text-accent-teal",
   },
 ];
 

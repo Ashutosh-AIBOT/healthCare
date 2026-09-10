@@ -207,11 +207,11 @@ export function VoiceTalkButton({ onTranscript, onError, context = "general" }: 
         className={cn(
           "h-10 w-10 shrink-0 rounded-full flex items-center justify-center transition-all relative",
           status === "idle" && "bg-primary/10 text-primary hover:bg-primary/20",
-          status === "connecting" && "bg-amber-500 text-white animate-pulse",
+          status === "connecting" && "bg-accent-water text-primary-foreground animate-pulse",
           status === "listening" &&
-            "bg-rose-500 text-white shadow-[0_0_15px_rgba(244,63,94,0.4)] animate-pulse",
-          status === "thinking" && "bg-amber-500 text-white animate-pulse",
-          status === "speaking" && "bg-primary text-white shadow-sm"
+            "bg-accent-water text-primary-foreground animate-pulse",
+          status === "thinking" && "bg-accent-water text-primary-foreground animate-pulse",
+          status === "speaking" && "bg-primary text-primary-foreground shadow-sm"
         )}
       >
         {status === "connecting" || status === "thinking" ? (
@@ -223,8 +223,8 @@ export function VoiceTalkButton({ onTranscript, onError, context = "general" }: 
         )}
         {status === "speaking" && (
           <span className="absolute -top-0.5 -right-0.5 flex h-3 w-3">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
-            <span className="relative inline-flex rounded-full h-3 w-3 bg-white" />
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary-foreground opacity-75" />
+            <span className="relative inline-flex rounded-full h-3 w-3 bg-primary-foreground" />
           </span>
         )}
       </button>

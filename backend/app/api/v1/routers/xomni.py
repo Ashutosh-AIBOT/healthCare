@@ -37,6 +37,8 @@ class ChatRequest(BaseModel):
     conversation_id: str | None = None
     user_prompt_prefix: str | None = None
     nutrition_context: dict | None = None
+    member_id: uuid.UUID | None = None
+    document_id: uuid.UUID | None = None
     stream: bool = True            # True = Groq SSE streaming
 
 
@@ -47,6 +49,7 @@ class ChatResponse(BaseModel):
     citations: list[dict] = []
     emergency: bool = False
     action: dict | None = None
+    applied: dict | None = None
 
 
 class ActionDecisionRequest(BaseModel):
@@ -110,6 +113,9 @@ async def chat(
         conversation_id=conv_id,
         user_prompt_prefix=payload.user_prompt_prefix or current_user.ai_context,
         nutrition_context=payload.nutrition_context,
+        family_id=current_user.family_id,
+        member_id=payload.member_id,
+        document_id=payload.document_id,
     )
 
     if result.get("emergency"):
@@ -135,6 +141,8 @@ async def chat(
                 "conversation_id": conv_id_str,
                 "message_id": msg_id_str,
                 "action": action,
+                "applied": result.get("applied"),
+                "citations": result.get("citations", []),
             })
             + "\n\n"
         ).encode()
@@ -312,12 +320,24 @@ async def livekit_token(
     import os
     livekit_url = os.environ.get("LIVEKIT_URL", "")
 
+    try:
+        dispatch_id = await gateway.dispatch_voice_agent(
+            room_name=room,
+            metadata=metadata,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
     return {
         "token": token,
         "room_name": room,
         "livekit_url": livekit_url,
         "participant_identity": identity,
         "context": context_val,
+        "agent_dispatched": True,
+        "dispatch_id": dispatch_id,
     }
 
 

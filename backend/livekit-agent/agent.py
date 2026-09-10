@@ -28,7 +28,13 @@ class Assistant(Agent):
 
 
 class _GroqChatStream(llm.LLMStream):
-    """Single-shot stream: one full Groq reply emitted as one chunk."""
+    """Token-streaming adapter: Groq SSE deltas become LiveKit chunks.
+
+    Streaming (instead of one full-text chunk) lets TTS start synthesis on
+    the first tokens, which is what makes the turn feel realtime. If the
+    stream fails, a single fallback sentence is emitted so the turn never
+    goes silent.
+    """
 
     def __init__(self, parent, *, chat_ctx, tools, conn_options, groq, no_key: bool):
         super().__init__(parent, chat_ctx=chat_ctx, tools=tools, conn_options=conn_options)
@@ -38,22 +44,39 @@ class _GroqChatStream(llm.LLMStream):
     async def _run(self):
         from livekit.agents.llm import ChatChunk, ChoiceDelta
 
+        stream_id = f"groq-{uuid.uuid4().hex[:8]}"
+        first = True
+
+        async def emit(text: str):
+            nonlocal first
+            chunk = ChatChunk(
+                id=stream_id,
+                delta=ChoiceDelta(content=text, role="assistant" if first else None),
+            )
+            first = False
+            self._event_ch.send_nowait(chunk)
+
         if self._no_key:
-            text = NO_KEY_MESSAGE
-        else:
-            try:
-                messages, _ = self._chat_ctx.to_provider_format("openai")
-                text = await self._groq.chat(messages, VOICE_SYSTEM_PROMPT)
-            except GroqKeyInvalid:
-                text = "Your Groq key was rejected. Please check it in Profile, AI Provider Keys."
-            except Exception:
-                logger.exception("Groq chat failed")
-                text = "I'm having trouble reaching my language model right now. Please try again shortly."
-        chunk = ChatChunk(
-            id=f"groq-{uuid.uuid4().hex[:8]}",
-            delta=ChoiceDelta(content=text, role="assistant"),
-        )
-        self._event_ch.send_nowait(chunk)
+            await emit(NO_KEY_MESSAGE)
+            return
+        try:
+            messages, _ = self._chat_ctx.to_provider_format("openai")
+            async for delta in self._groq.chat_stream(messages, VOICE_SYSTEM_PROMPT):
+                if delta:
+                    await emit(delta)
+            if first:
+                # Stream completed without any delta — say so plainly.
+                await emit(
+                    "I didn't catch a full reply just now. Please try again shortly."
+                )
+        except GroqKeyInvalid:
+            await emit("Your Groq key was rejected. Please check it in Profile, AI Provider Keys.")
+        except Exception:
+            logger.exception("Groq chat failed")
+            if first:
+                await emit(
+                    "I'm having trouble reaching my language model right now. Please try again shortly."
+                )
 
 
 class UserGroqVoiceLLM(llm.LLM):
@@ -108,7 +131,19 @@ async def entrypoint(ctx: JobContext):
         except Exception as e:
             logger.error(f"Failed to load user context: {e}")
 
-    # Set up the fallback-capable pipeline session
+    # Noise cancellation needs LiveKit Cloud; fall back gracefully for local
+    # `livekit-server --dev` runs which do not provide BVC.
+    try:
+        audio_input = room_io.AudioInputOptions(
+            noise_cancellation=noise_cancellation.BVC(),
+        )
+    except Exception:
+        logger.warning("BVC noise cancellation unavailable; continuing without it.")
+        audio_input = room_io.AudioInputOptions()
+
+    # Set up the fallback-capable pipeline session.
+    # Endpointing is deliberately relaxed (0.5s / 1.5s) so Hindi and slow
+    # English speech is not cut off mid-sentence.
     session = AgentSession(
         stt=stt.FallbackAdapter(
             [
@@ -124,13 +159,13 @@ async def entrypoint(ctx: JobContext):
             ]
         ),
         vad=silero.VAD.load(
-            min_silence_duration=0.25,
-            prefix_padding_duration=0.2,
+            min_silence_duration=0.5,
+            prefix_padding_duration=0.3,
         ),
         turn_detection="vad",
         preemptive_generation=True,
-        min_endpointing_delay=0.25,
-        max_endpointing_delay=0.6,
+        min_endpointing_delay=0.5,
+        max_endpointing_delay=1.5,
     )
 
     # Pre-populate session history with past context
@@ -150,29 +185,46 @@ async def entrypoint(ctx: JobContext):
         await session.start(
             agent=Assistant(),
             room=ctx.room,
-            room_options=room_io.RoomOptions(
-                audio_input=room_io.AudioInputOptions(
-                    noise_cancellation=noise_cancellation.BVC(),
-                ),
-            ),
+            room_options=room_io.RoomOptions(audio_input=audio_input),
         )
-    except Exception as e:
-        logger.error(f"Error starting session: {e}")
+    except Exception:
+        logger.exception("Error starting session")
+        return
 
-    async def save_context(reason: str = ""):
-        # Save updated conversation context to user_context.json
+    # Speak first so the user hears the agent immediately (proves the audio
+    # path works) instead of silence until their first utterance is processed.
+    try:
+        await session.generate_reply(
+            instructions="Greet the user briefly and ask how you can help."
+        )
+    except Exception:
+        logger.exception("Greeting reply failed")
+
+    async def save_context():
+        # Save updated conversation context to user_context.json.
+        # Content items may be plain strings or rich content parts — extract
+        # text defensively without logging message bodies (no PHI in logs).
         updated_messages = []
         for item in session.history.messages():
             content_str = ""
-            if isinstance(item.content, list):
-                content_str = " ".join([c for c in item.content if isinstance(c, str)])
-            elif isinstance(item.content, str):
-                content_str = item.content
+            content = item.content
+            if isinstance(content, str):
+                content_str = content
+            elif isinstance(content, list):
+                parts = []
+                for c in content:
+                    if isinstance(c, str):
+                        parts.append(c)
+                    else:
+                        text = getattr(c, "text", None) or getattr(c, "content", None)
+                        if isinstance(text, str) and text:
+                            parts.append(text)
+                content_str = " ".join(parts)
 
             if content_str:
                 updated_messages.append({
                     "role": item.role,
-                    "content": content_str
+                    "content": content_str,
                 })
 
         try:
@@ -194,4 +246,13 @@ async def entrypoint(ctx: JobContext):
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
+    # Render's small instance can report a high baseline CPU load while the
+    # model plugins are warming up. Keep one worker process and allow a single
+    # active call instead of advertising the agent as unavailable at startup.
+    cli.run_app(
+        WorkerOptions(
+            entrypoint_fnc=entrypoint,
+            num_idle_processes=0,
+            load_threshold=1.0,
+        )
+    )

@@ -57,27 +57,6 @@ class XomniMessage(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
 
 # ---------------------------------------------------------------------------
-# Personal context (user-confirmed facts for tailored suggestions)
-# ---------------------------------------------------------------------------
-
-class UserPersonalContext(UUIDPrimaryKeyMixin, TimestampMixin, Base):
-    __tablename__ = "user_personal_context"
-
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False, unique=True, index=True
-    )
-    family_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("families.id", ondelete="SET NULL"),
-        nullable=True
-    )
-    context_json: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
-    # e.g. {"goals": [...], "dietary_restrictions": [...], "likes": [...],
-    #       "dislikes": [...], "habits": [...], "activity_level": "..."}
-    source: Mapped[str] = mapped_column(String(20), nullable=False, default="USER_CONFIRMED")
-
-
-# ---------------------------------------------------------------------------
 # Nutrition / BMI
 # ---------------------------------------------------------------------------
 

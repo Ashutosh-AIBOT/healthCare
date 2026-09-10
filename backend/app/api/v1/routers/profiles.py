@@ -2,6 +2,7 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,18 +10,19 @@ from app.core.deps import get_current_user, get_db
 from app.core.errors import AppError
 from app.models.user import User
 from app.models.api_keys import ApiKey
-from app.models.xomni import UserPersonalContext
+from app.models.rag_context import UserPersonalContext
 from app.schemas.api_keys import ApiKeyCreate, ApiKeyRead, ApiKeyUpdate
 from app.schemas.auth import ProfileUpdate, UserOut
-from pydantic import BaseModel
 
 
 router = APIRouter(prefix="/profile", tags=["profile"])
 
 
-# Allowlist mirrors xomni_service.PERSONAL_CONTEXT_KEYS (single source there).
+# Allowlist: main's six keys + activity_level (single source; mirrors
+# xomni_service.PERSONAL_CONTEXT_KEYS).
 PERSONAL_CONTEXT_KEYS = frozenset({
-    "goals", "dietary_restrictions", "likes", "dislikes", "habits", "activity_level",
+    "goals", "dietary_restrictions", "likes", "dislikes", "habits",
+    "activity_level", "communication_preferences",
 })
 
 

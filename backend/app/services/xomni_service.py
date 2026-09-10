@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+import re
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -12,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.gateway import LLMGateway
 from app.ai import guardrails, triage
+from app.ai.chat_context import build_chat_context
 from app.models.xomni import XomniConversation, XomniMessage
 from app.models.learn import LearnCategory, LearnItem  # type: ignore[attr-defined]
 
@@ -73,6 +75,10 @@ You are Xomni, a smart health and wellness AI assistant. You help users with:
 - Fitness guidance and activity tracking
 - BMI calculation and dietary planning
 
+When a user shares a durable preference, habit, goal, dislike, dietary restriction, or communication preference that would improve future advice, do not save it silently. Ask for confirmation and emit:
+{"action": "propose_personal_context", "updates": {"likes": ["..."], "dislikes": ["..."], "habits": ["..."], "goals": ["..."], "dietary_restrictions": ["..."]}}
+Only include categories supported by the user's statement. Never store a medical diagnosis or sensitive fact as a preference without explicit confirmation.
+
 Be conversational, helpful, and always recommend professional medical advice for medical issues.
 When you propose something that should be saved (meal plan, task, workout, personal preferences), use exactly one JSON action block with an "action" key so the user gets an Accept/Decline card. Never claim anything was saved before the user confirms.
 """
@@ -86,10 +92,16 @@ Guidelines:
       {"action": "propose_todo", "title": "Evening Cardio", "start_hour": 17, "end_hour": 18, "priority": "important", "recurrence_rule": "once", "created_by": "XOMNI"}
     - RULES: exactly one JSON action block per reply with an "action" key; title is required; priority is one of normal/important/less; start_hour/end_hour are integers 0-24. Never invent other action names.
 2. When users ask to complete or check off a task:
-    - Respond with: {"action": "complete_block", "title": "...", "start_hour": 10}
-3. When users ask about their 3 timetable templates (Productive Day, Backup Day, Holiday Day):
+    - Respond with: {"action": "complete_todo", "existing_title": "...", "due_date": "YYYY-MM-DD"}
+3. When users ask to change an existing task, never create a duplicate. Ask for permission first and emit:
+    {"action": "update_todo", "existing_title": "...", "existing_due_date": "YYYY-MM-DD", "title": "New title", "start_hour": 14, "end_hour": 16, "due_date": "YYYY-MM-DD", "priority": "normal"}
+    Include only fields the user asked to change. Use the exact existing title when it is known; if it is ambiguous, ask a clarification question instead of proposing an update.
+4. When users ask to remove a task, ask for permission first and emit:
+    {"action": "delete_todo", "existing_title": "...", "due_date": "YYYY-MM-DD"}
+    Never delete a task without the confirmation step.
+5. When users ask about their 3 timetable templates (Productive Day, Backup Day, Holiday Day):
     - Explain the structure of each template and how their daily adherence score is calculated.
-4. All tasks proposed by you will be tagged with `created_by: 'XOMNI'` so users always know AI proposed it, while tasks they create themselves are tagged as manual.
+6. All tasks proposed by you will be tagged with `created_by: 'XOMNI'` so users always know AI proposed it, while tasks they create themselves are tagged as manual.
 """
 
 PERSONAL_CONTEXT_INSTRUCTION = """\
@@ -197,9 +209,9 @@ def _extract_action(answer_text: str) -> tuple[str, dict | None]:
         except _json.JSONDecodeError:
             cursor = start + 1
             continue
-        if isinstance(candidate, dict) and candidate.get("action"):
+        if isinstance(candidate, dict) and _normalize_action(candidate):
             clean = (answer_text[:start] + answer_text[start + end:]).strip()
-            return clean, candidate
+            return clean, _normalize_action(candidate)
         cursor = start + 1
 
 
@@ -207,6 +219,8 @@ def _extract_action(answer_text: str) -> tuple[str, dict | None]:
 # The chat model must emit exactly these shapes. Older / free-form variants
 # (e.g. {"meals": [...], "description": ..., "protein_g": ...}) are normalized
 # here so a slightly-off proposal still saves instead of silently dying.
+# Main's _normalize_action gate (below) runs first at extraction time; these
+# validators run at confirmation time on the stored payload.
 
 MEAL_TYPES = ("breakfast", "lunch", "snacks", "dinner")
 
@@ -219,7 +233,8 @@ _MEAL_ITEM_ALIASES = {
 }
 
 PERSONAL_CONTEXT_KEYS = frozenset({
-    "goals", "dietary_restrictions", "likes", "dislikes", "habits", "activity_level",
+    "goals", "dietary_restrictions", "likes", "dislikes", "habits",
+    "activity_level", "communication_preferences",
 })
 
 DASHBOARD_URLS = {
@@ -368,6 +383,197 @@ def _normalize_personal_context(updates: Any) -> dict:
     return cleaned
 
 
+_SUPPORTED_ACTIONS = {
+    "propose_todo",
+    "update_todo",
+    "complete_todo",
+    "delete_todo",
+    "propose_meal_plan",
+    "propose_fitness_activity",
+    "propose_personal_context",
+}
+
+
+def _normalize_action(action: dict) -> dict | None:
+    """Accept only the small, server-owned action contract.
+
+    The model can suggest JSON, but it must not invent an executable operation
+    or push unbounded text into the pending-action column.
+    """
+    name = action.get("action")
+    if name not in _SUPPORTED_ACTIONS:
+        return None
+    normalized = {key: value for key, value in action.items() if key != "action"}
+    normalized["action"] = name
+    for key in ("title", "existing_title", "description", "notes", "activity_type"):
+        if key in normalized and normalized[key] is not None:
+            if not isinstance(normalized[key], str) or len(normalized[key].strip()) > 500:
+                return None
+            normalized[key] = normalized[key].strip()
+    if name in {"update_todo", "complete_todo", "delete_todo"} and not normalized.get("existing_title") and not normalized.get("todo_id"):
+        return None
+    return normalized
+
+
+def _hour_to_minute(value: Any) -> int | None:
+    """Convert an action hour to a quarter-hour-aligned minute value."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    minutes = round(float(value) * 60)
+    if not 0 <= minutes <= 1440 or minutes % 15:
+        return None
+    return minutes
+
+
+def _canonical_title(value: str) -> str:
+    """Match human/model titles despite Unicode or repeated whitespace."""
+    return " ".join(value.split()).casefold()
+
+
+def _fallback_fitness_action(message: str) -> dict | None:
+    """Create a narrow proposal when the model misses the required action JSON."""
+    lowered = message.lower()
+    if not any(word in lowered for word in ("log", "record", "track", "add")):
+        return None
+    duration_match = re.search(r"(\d+)\s*(?:minute|minutes|min|mins)", lowered)
+    if not duration_match:
+        return None
+    duration = int(duration_match.group(1))
+    if not 1 <= duration < 1440:
+        return None
+    activity_type = "walking" if any(word in lowered for word in ("walk", "walking")) else "exercise"
+    return {
+        "action": "propose_fitness_activity",
+        "activity_type": activity_type,
+        "duration_minutes": duration,
+        "logged_date": date.today().isoformat(),
+        "notes": "Captured from the user's explicit Xomni activity request.",
+    }
+
+
+def _fallback_timetable_action(message: str) -> dict | None:
+    """Create a confirmation proposal for an explicit existing-task time edit."""
+    lowered = message.lower()
+    if not any(word in lowered for word in ("change", "update", "replace", "move")):
+        return None
+    if not any(word in lowered for word in ("todo", "task", "schedule")):
+        return None
+    time_match = re.search(r"(\d{1,2})(?::(\d{2}))?\s*(?:-|to)\s*(\d{1,2})(?::(\d{2}))?", lowered)
+    if not time_match:
+        return None
+    start_hour = int(time_match.group(1)) + int(time_match.group(2) or 0) / 60
+    end_hour = int(time_match.group(3)) + int(time_match.group(4) or 0) / 60
+    if _hour_to_minute(start_hour) is None or _hour_to_minute(end_hour) is None or end_hour <= start_hour:
+        return None
+
+    title_match = re.search(r"(?:titled|called)\s+[\"'“]?(.+?)[\"'”]?\s+(?:to|from)\s+\d", message, re.IGNORECASE)
+    if title_match is None:
+        title_match = re.search(r"(?:todo|task)\s+(.+?)\s+(?:to|from)\s+\d", message, re.IGNORECASE)
+    if title_match is None:
+        return None
+    title = title_match.group(1).strip(" \t\"'“”")
+    if not title:
+        return None
+    return {
+        "action": "update_todo",
+        "existing_title": title,
+        "existing_due_date": date.today().isoformat(),
+        "start_hour": start_hour,
+        "end_hour": end_hour,
+    }
+
+
+async def _get_timetable_context(db: AsyncSession, family_id: uuid.UUID | None, user_id: uuid.UUID) -> str:
+    """Give the timetable model exact user-owned task names for safe edits."""
+    if family_id is None:
+        return ""
+    try:
+        from app.services.time_service import time_service
+
+        todos = await time_service.list_todos(db, family_id, user_id)
+        if not todos:
+            return "No saved todos are currently available."
+        lines = ["Current saved todos (use exact title and date for edits):"]
+        for todo in todos[:50]:
+            start = f"{todo.start_minute // 60:02d}:{todo.start_minute % 60:02d}" if todo.start_minute is not None else "unscheduled"
+            end = f"{todo.end_minute // 60:02d}:{todo.end_minute % 60:02d}" if todo.end_minute is not None else "unscheduled"
+            lines.append(f"- {todo.title} | date={todo.due_date.isoformat()} | time={start}-{end} | status={todo.status}")
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
+async def _resolve_todo_for_action(db: AsyncSession, family_id: uuid.UUID, user_id: uuid.UUID, action: dict):
+    """Resolve one owned todo, refusing ambiguous title-based mutations."""
+    from app.models.time import Todo
+
+    todo_id = action.get("todo_id")
+    if todo_id:
+        try:
+            todo = await db.scalar(select(Todo).where(
+                Todo.id == uuid.UUID(str(todo_id)),
+                Todo.family_id == family_id,
+                Todo.user_id == user_id,
+            ))
+        except (ValueError, AttributeError):
+            todo = None
+        if todo is None:
+            raise ValueError("I could not find that todo. Please tell me its exact title.")
+        return todo
+
+    title = _canonical_title(str(action.get("existing_title") or ""))
+    todos = await db.scalars(select(Todo).where(
+        Todo.family_id == family_id,
+        Todo.user_id == user_id,
+    ).order_by(Todo.due_date, Todo.created_at))
+    matches = [todo for todo in todos if _canonical_title(todo.title) == title]
+    due_date = action.get("existing_due_date")
+    if due_date is None and action.get("action") != "update_todo":
+        due_date = action.get("due_date")
+    if isinstance(due_date, str):
+        try:
+            requested_date = date.fromisoformat(due_date)
+            matches = [todo for todo in matches if todo.due_date == requested_date]
+        except ValueError:
+            raise ValueError("That due date is invalid. Please use YYYY-MM-DD.")
+    if not matches:
+        raise ValueError("I could not find that todo. Please tell me its exact title and date.")
+    if len(matches) > 1:
+        raise ValueError("I found more than one todo with that title. Please include its date.")
+    return matches[0]
+
+
+def _is_action_confirmation(message: str) -> bool:
+    """Recognize explicit confirmation replies across chat, voice, and Telegram."""
+    normalized = " ".join(re.sub(r"[^a-z0-9\s]", "", message.lower()).split())
+    return normalized in {
+        "yes", "y", "confirm", "confirmed", "approve", "approved",
+        "yes update", "yes add", "yes replace", "do it", "go ahead",
+    } or normalized.startswith(("yes ", "confirm ", "approve "))
+
+
+def _is_action_rejection(message: str) -> bool:
+    normalized = " ".join(re.sub(r"[^a-z0-9\s]", "", message.lower()).split())
+    return normalized in {
+        "no", "n", "reject", "rejected", "cancel", "cancelled", "don't",
+        "do not", "leave it", "leave it unchanged",
+    } or normalized.startswith(("no ", "reject ", "cancel "))
+
+
+def _action_confirmation_text(result: dict[str, Any]) -> str:
+    """Return a channel-neutral confirmation message after a committed action."""
+    types = {item.get("type") for item in result.get("affected", [])}
+    if "todo" in types:
+        return "Done. I updated your todo and timetable."
+    if "meal_plan" in types:
+        return "Done. I updated your food plan."
+    if "fitness_activity" in types:
+        return "Done. I updated your fitness activity."
+    if "personal_context" in types:
+        return "Done. I saved that preference for future recommendations."
+    return "Done. I applied the approved update."
+
+
 async def apply_pending_action(
     db: AsyncSession,
     *,
@@ -387,7 +593,7 @@ async def apply_pending_action(
     conv = await db.scalar(select(XomniConversation).where(
         XomniConversation.id == conversation_id,
         XomniConversation.user_id == user_id,
-    ))
+    ).with_for_update())
     if not conv or not conv.pending_action:
         raise ValueError("There is no pending Xomni action to confirm.")
     if conv.pending_action_expires_at and conv.pending_action_expires_at < datetime.now(UTC):
@@ -408,6 +614,9 @@ async def apply_pending_action(
             if key != "action":
                 action[key] = value
 
+    action = _normalize_action(action)
+    if action is None:
+        raise ValueError("The pending Xomni action is invalid or unsupported.")
     action_name = action.get("action")
     result: dict[str, Any] = {
         "action": action_name,
@@ -426,12 +635,16 @@ async def apply_pending_action(
         block_id = None
         start_hour = action.get("start_hour")
         end_hour = action.get("end_hour")
-        if isinstance(start_hour, int) and isinstance(end_hour, int) and 0 <= start_hour < end_hour <= 24 and tt:
+        start_minute = _hour_to_minute(start_hour)
+        end_minute = _hour_to_minute(end_hour)
+        if (start_hour is not None or end_hour is not None) and (start_minute is None or end_minute is None or end_minute <= start_minute):
+            raise ValueError("Task times must be between 00:00 and 24:00 in 15-minute increments.")
+        if start_minute is not None and end_minute is not None and tt:
             block = TimeBlock(
                 timetable_id=tt.id,
                 title=title,
-                start_minute=start_hour * 60,
-                end_minute=end_hour * 60,
+                start_minute=start_minute,
+                end_minute=end_minute,
                 priority=action.get("priority") if action.get("priority") in {"normal", "important", "less"} else "normal",
                 description="Created by Xomni after user confirmation.",
             )
@@ -443,8 +656,6 @@ async def apply_pending_action(
             due = date.fromisoformat(due_date) if isinstance(due_date, str) else date.today()
         except ValueError:
             due = date.today()
-        start_minute = action.get("start_hour") * 60 if isinstance(action.get("start_hour"), int) else None
-        end_minute = action.get("end_hour") * 60 if isinstance(action.get("end_hour"), int) else None
         recurrence_rule = action.get("recurrence_rule") if action.get("recurrence_rule") in {"once", "daily", "weekdays", "weekly"} else "once"
         recurrence_until = None
         if isinstance(action.get("recurrence_until"), str):
@@ -468,6 +679,43 @@ async def apply_pending_action(
         result["affected"].append({"type": "todo", "id": str(todo.id), "due_date": due.isoformat()})
         if block_id:
             result["affected"].append({"type": "time_block", "id": str(block_id)})
+    elif action_name in {"update_todo", "complete_todo", "delete_todo"}:
+        todo = await _resolve_todo_for_action(db, family_id, user_id, action)
+        if action_name == "delete_todo":
+            todo_id = todo.id
+            await time_service.delete_todo(db, family_id, user_id, todo_id)
+            result["affected"].append({"type": "todo", "id": str(todo_id), "operation": "deleted"})
+        else:
+            if action_name == "complete_todo":
+                await time_service.update_todo(
+                    db, family_id, user_id, todo.id, {"status": "done"}
+                )
+                operation = "completed"
+            else:
+                update_payload: dict[str, Any] = {}
+                if isinstance(action.get("title"), str) and action["title"].strip():
+                    update_payload["title"] = action["title"].strip()
+                if isinstance(action.get("description"), str):
+                    update_payload["description"] = action["description"].strip()
+                if isinstance(action.get("due_date"), str):
+                    try:
+                        update_payload["due_date"] = date.fromisoformat(action["due_date"])
+                    except ValueError as exc:
+                        raise ValueError("That due date is invalid. Please use YYYY-MM-DD.") from exc
+                if "start_hour" in action or "end_hour" in action:
+                    start_minute = _hour_to_minute(action.get("start_hour", (todo.start_minute / 60) if todo.start_minute is not None else None))
+                    end_minute = _hour_to_minute(action.get("end_hour", (todo.end_minute / 60) if todo.end_minute is not None else None))
+                    if start_minute is None or end_minute is None or end_minute <= start_minute:
+                        raise ValueError("The updated task time must be in 15-minute increments and end after start.")
+                    update_payload["start_minute"] = start_minute
+                    update_payload["end_minute"] = end_minute
+                if action.get("priority") in {"normal", "important", "less"}:
+                    update_payload["priority"] = action["priority"]
+                if not update_payload:
+                    raise ValueError("Tell me what should change in that todo.")
+                await time_service.update_todo(db, family_id, user_id, todo.id, update_payload)
+                operation = "updated"
+            result["affected"].append({"type": "todo", "id": str(todo.id), "operation": operation})
     elif action_name == "propose_meal_plan":
         from datetime import datetime as _dt
         from app.models.xomni import MealPlan, MealPlanHistory
@@ -523,24 +771,19 @@ async def apply_pending_action(
         await db.flush()
         result["affected"].append({"type": "fitness_activity", "id": str(activity.id), "logged_date": logged_date.isoformat()})
     elif action_name == "propose_personal_context":
-        from app.models.xomni import UserPersonalContext
+        from app.models.rag_context import UserPersonalContext
 
         updates = _normalize_personal_context(action.get("updates"))
         row = await db.scalar(select(UserPersonalContext).where(UserPersonalContext.user_id == user_id))
         if row is None:
-            row = UserPersonalContext(
-                user_id=user_id, family_id=family_id,
-                context_json=updates, source="USER_CONFIRMED",
-            )
+            row = UserPersonalContext(user_id=user_id, family_id=family_id, context_json=updates, source="XOMNI_CONFIRMED")
             db.add(row)
         else:
-            merged = dict(row.context_json or {})
-            merged.update(updates)
-            row.context_json = merged
+            row.context_json = {**(row.context_json or {}), **updates}
             row.family_id = family_id
-            row.source = "USER_CONFIRMED"
+            row.source = "XOMNI_CONFIRMED"
         await db.flush()
-        result["affected"].append({"type": "personal_context", "fields": sorted(updates)})
+        result["affected"].append({"type": "personal_context", "id": str(row.id), "fields": sorted(updates)})
     else:
         raise ValueError("This Xomni action cannot be confirmed yet.")
 
@@ -601,24 +844,6 @@ async def _get_conversation_history(
     return [{"role": m.role, "content": m.content} for m in messages]
 
 
-async def _get_personal_context_text(db: AsyncSession, user_id: uuid.UUID) -> str:
-    """Render the user's confirmed personal context for prompt injection."""
-    try:
-        from app.models.xomni import UserPersonalContext
-        row = await db.scalar(select(UserPersonalContext).where(UserPersonalContext.user_id == user_id))
-        if not row or not row.context_json:
-            return ""
-        lines = ["Known user context (explicitly confirmed — tailor suggestions to it):"]
-        for key, value in (row.context_json or {}).items():
-            if isinstance(value, list):
-                lines.append(f"- {key}: {', '.join(str(v) for v in value)}")
-            elif value:
-                lines.append(f"- {key}: {value}")
-        return "\n".join(lines) if len(lines) > 1 else ""
-    except Exception:
-        return ""
-
-
 async def chat(
     db: AsyncSession,
     *,
@@ -628,6 +853,9 @@ async def chat(
     conversation_id: uuid.UUID | None = None,
     user_prompt_prefix: str | None = None,
     nutrition_context: dict | None = None,
+    family_id: uuid.UUID | None = None,
+    member_id: uuid.UUID | None = None,
+    document_id: uuid.UUID | None = None,
 ) -> dict[str, Any]:
     """
     Main Xomni chat function.
@@ -663,23 +891,91 @@ async def chat(
     db.add(user_msg)
     await db.flush()
 
+    # Keep confirmation behavior identical for website text, browser voice
+    # transcripts, and Telegram. The mutation still happens only after the
+    # explicit confirmation and is committed by the request transaction.
+    if family_id is not None and conv.pending_action:
+        if _is_action_confirmation(message):
+            try:
+                applied = await apply_pending_action(
+                    db,
+                    user_id=user_id,
+                    family_id=family_id,
+                    conversation_id=conv.id,
+                )
+                answer_text = _action_confirmation_text(applied)
+                db.add(XomniMessage(
+                    conversation_id=conv.id,
+                    role="assistant",
+                    content=answer_text,
+                    provider_used="system",
+                ))
+                await db.flush()
+                return {
+                    "answer": answer_text,
+                    "conversation_id": str(conv.id),
+                    "message_id": None,
+                    "citations": [],
+                    "emergency": False,
+                    "action": None,
+                    "applied": applied,
+                }
+            except ValueError as exc:
+                answer_text = str(exc)
+                db.add(XomniMessage(
+                    conversation_id=conv.id,
+                    role="assistant",
+                    content=answer_text,
+                    provider_used="system",
+                ))
+                await db.flush()
+                return {
+                    "answer": answer_text,
+                    "conversation_id": str(conv.id),
+                    "message_id": None,
+                    "citations": [],
+                    "emergency": False,
+                    "action": None,
+                }
+        if _is_action_rejection(message):
+            conv.pending_action = None
+            conv.pending_action_expires_at = None
+            answer_text = "Okay. I left your plan unchanged."
+            db.add(XomniMessage(
+                conversation_id=conv.id,
+                role="assistant",
+                content=answer_text,
+                provider_used="system",
+            ))
+            await db.flush()
+            return {
+                "answer": answer_text,
+                "conversation_id": str(conv.id),
+                "message_id": None,
+                "citations": [],
+                "emergency": False,
+                "action": None,
+            }
+
     # Get conversation history for context
     history = await _get_conversation_history(db, conv.id, limit=6)
 
-    # Get learn context (RAG over food/test DB)
-    learn_context = await _get_learn_context(db, message)
+    # Retrieve global Learn knowledge, confirmed personal context, and scoped reports.
+    retrieved = await build_chat_context(
+        db,
+        user_id=user_id,
+        family_id=family_id,
+        question=message,
+        member_id=member_id,
+        document_id=document_id,
+    )
 
-    # Pick system prompt by mode (single source of truth incl. action shapes)
+    # Pick system prompt by mode
     system_prompt = _get_mode_system_prompt(mode)
 
     # Inject user restrictions if set
     if conv.user_prompt_prefix:
         system_prompt += f"\n\nUser preferences/restrictions: {conv.user_prompt_prefix}"
-
-    # Inject confirmed personal context so suggestions stay tailored
-    personal_context_text = await _get_personal_context_text(db, user_id)
-    if personal_context_text:
-        system_prompt += f"\n\n{personal_context_text}"
 
     # Build prompt with history + learn context
     history_text = ""
@@ -699,11 +995,18 @@ User's nutrition profile:
 - Protein target: {nutrition_context.get('target_protein_g', 'unknown')}g/day
 """
 
+    timetable_text = ""
+    if mode == "timetable":
+        timetable_text = await _get_timetable_context(db, family_id, user_id)
+
     full_prompt = f"""{system_prompt}
 
-{learn_context}
+Retrieved context (cite the source labels when you use it):
+{retrieved.text}
 
 {nutrition_text}
+
+{timetable_text}
 
 {"--- Conversation History ---" if history_text else ""}
 {history_text}
@@ -732,8 +1035,12 @@ XOMNI:"""
 
     # Detect and persist actions so confirmation is server-owned and resumable.
     action = None
-    if mode in ["timetable", "food", "general"]:
+    if mode in ["timetable", "food", "general", "fitness", "reports"]:
         answer_text, action = _extract_action(answer_text)
+        if action is None and mode == "fitness":
+            action = _fallback_fitness_action(message)
+        if action is None and mode == "timetable":
+            action = _fallback_timetable_action(message)
         if action:
             conv.pending_action = {"action": action}
             conv.pending_action_expires_at = datetime.now(UTC) + timedelta(minutes=15)
@@ -757,7 +1064,7 @@ XOMNI:"""
         "answer": answer_text,
         "conversation_id": str(conv.id),
         "message_id": str(ai_msg.id),
-        "citations": [],
+        "citations": retrieved.citations,
         "emergency": False,
         "action": action,
     }

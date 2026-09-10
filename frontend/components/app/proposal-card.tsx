@@ -35,9 +35,14 @@ const MEAL_TYPES = ["breakfast", "lunch", "snacks", "dinner"] as const;
 const KIND_META: Record<string, { title: string; dashboard: string }> = {
   propose_meal_plan: { title: "Meal Plan Update", dashboard: "/app/food" },
   propose_todo: { title: "Schedule Update", dashboard: "/app/time" },
+  update_todo: { title: "Todo Update", dashboard: "/app/time" },
+  complete_todo: { title: "Complete Todo", dashboard: "/app/time" },
+  delete_todo: { title: "Delete Todo", dashboard: "/app/time" },
   propose_fitness_activity: { title: "Workout Log", dashboard: "/app/fitness" },
   propose_personal_context: { title: "Personal Context", dashboard: "/app/profile" },
 };
+
+const TODO_MUTATIONS = ["update_todo", "complete_todo", "delete_todo"];
 
 function bucketOf(raw: any): string {
   const label = `${raw?.meal ?? ""} ${raw?.name ?? ""}`.toLowerCase();
@@ -101,7 +106,7 @@ export function ProposalCard({ action, onAccept, onReject }: ProposalCardProps) 
   const [result, setResult] = useState<ConfirmResult | null>(null);
 
   const [mealRows, setMealRows] = useState<MealRow[]>(() => initialMealRows(action));
-  const [todoTitle, setTodoTitle] = useState(() => String(action?.title ?? ""));
+  const [todoTitle, setTodoTitle] = useState(() => String(action?.title ?? action?.existing_title ?? ""));
   const [todoStart, setTodoStart] = useState(() => String(action?.start_hour ?? ""));
   const [todoEnd, setTodoEnd] = useState(() => String(action?.end_hour ?? ""));
   const [todoPriority, setTodoPriority] = useState(() => String(action?.priority ?? "normal"));
@@ -131,7 +136,7 @@ export function ProposalCard({ action, onAccept, onReject }: ProposalCardProps) 
       }
       return { meals: rows.map((r) => ({ ...r, name: r.name.trim() })) };
     }
-    if (kind === "propose_todo") {
+    if (kind === "propose_todo" || kind === "update_todo") {
       if (!todoTitle.trim()) {
         setCardError("The task needs a title.");
         return null;
@@ -142,6 +147,9 @@ export function ProposalCard({ action, onAccept, onReject }: ProposalCardProps) 
         end_hour: todoEnd === "" ? null : Number(todoEnd),
         priority: todoPriority,
       };
+    }
+    if (kind === "complete_todo" || kind === "delete_todo") {
+      return {};
     }
     if (kind === "propose_fitness_activity") {
       if (!fitType.trim() || !(Number(fitDuration) > 0)) {
@@ -310,8 +318,13 @@ export function ProposalCard({ action, onAccept, onReject }: ProposalCardProps) 
         </div>
       )}
 
-      {kind === "propose_todo" && (
+      {(kind === "propose_todo" || kind === "update_todo") && (
         <div className="space-y-2 mb-3">
+          {kind === "update_todo" && action?.existing_title && (
+            <p className="text-xs text-muted px-1">
+              Editing: <span className="font-medium text-ink">{String(action.existing_title)}</span>
+            </p>
+          )}
           <Input aria-label="Task title" value={todoTitle} disabled={busy} onChange={(e) => setTodoTitle(e.target.value)} placeholder="Task title" className="rounded-lg px-3 py-2 text-[13px]" />
           <div className="grid grid-cols-3 gap-1.5">
             <label className="block">
@@ -331,6 +344,18 @@ export function ProposalCard({ action, onAccept, onReject }: ProposalCardProps) 
               </select>
             </label>
           </div>
+        </div>
+      )}
+
+      {(kind === "complete_todo" || kind === "delete_todo") && (
+        <div className="mb-3 bg-surface border border-line/50 rounded-lg p-3">
+          <p className="font-medium text-ink text-[13px]">
+            {String(action?.existing_title || action?.title || "This task")}
+          </p>
+          <p className="text-muted text-xs mt-1">
+            {kind === "complete_todo" ? "Mark this task as complete." : "Remove this task."}
+            {action?.due_date ? ` Date: ${String(action.due_date)}` : ""}
+          </p>
         </div>
       )}
 

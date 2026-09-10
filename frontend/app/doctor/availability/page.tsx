@@ -89,7 +89,7 @@ export default function DoctorAvailabilityPage() {
 
   if (loading) {
     return (
-      <div className="min-h-dvh bg-[linear-gradient(180deg,var(--color-mist)_0%,var(--color-foam)_28%,var(--color-foam)_100%)]">
+      <div className="min-h-dvh bg-foam">
         <main className="mx-auto max-w-3xl px-4 py-10 md:px-6 md:py-12">
           <Skeleton className="h-8 w-48" />
           <div className="mt-8 space-y-4">
@@ -101,7 +101,7 @@ export default function DoctorAvailabilityPage() {
   }
 
   return (
-    <div className="min-h-dvh bg-[linear-gradient(180deg,var(--color-mist)_0%,var(--color-foam)_28%,var(--color-foam)_100%)]">
+    <div className="min-h-dvh bg-foam">
       <main className="mx-auto max-w-3xl space-y-6 px-4 py-10 md:px-6 md:py-12">
         <div>
           <h1 className="font-display text-3xl font-semibold tracking-tight">Availability</h1>

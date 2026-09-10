@@ -13,7 +13,9 @@ async function forward(req: NextRequest, pathParts: string[], method: string) {
   if (access) headers.Authorization = `Bearer ${access}`;
 
   const hasBody = method !== "GET" && method !== "HEAD";
-  const body = hasBody ? await req.text() : undefined;
+  const body = hasBody ? await req.arrayBuffer() : undefined;
+  const contentType = req.headers.get("content-type");
+  if (contentType) headers["Content-Type"] = contentType;
   const qs = req.nextUrl.search || "";
 
   return proxyToApi(`${path}${qs}`, {

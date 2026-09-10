@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Request, HTTPException
 from telegram import Update
-from telegram.ext import Application
+from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from app.config import settings
 from app.telegram_bot import start_command, stats_command, echo_message
 from app.database import init_db
@@ -13,9 +13,8 @@ logger = logging.getLogger(__name__)
 bot_application: Application | None = None
 if settings.telegram_bot_token:
     bot_application = Application.builder().token(settings.telegram_bot_token).build()
-    bot_application.add_handler(start_command)
-    bot_application.add_handler(stats_command)
-    from telegram.ext import MessageHandler, filters
+    bot_application.add_handler(CommandHandler("start", start_command))
+    bot_application.add_handler(CommandHandler("stats", stats_command))
     bot_application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo_message))
 else:
     logger.warning("TELEGRAM_BOT_TOKEN not set. Webhook disabled; /health stays ok (per-user bots connect via main backend).")
@@ -47,6 +46,11 @@ async def on_startup():
         await init_db()
     except Exception as e:
         logger.warning(f"DB init skipped/failed: {e}")
+    if bot_application is not None:
+        try:
+            await bot_application.initialize()
+        except Exception as e:
+            logger.warning(f"Telegram application initialization failed: {e}")
     if bot_application is not None and settings.webhook_url:
         try:
             await bot_application.bot.set_webhook(url=f"{settings.webhook_url}/webhook", drop_pending_updates=True)
@@ -59,4 +63,8 @@ async def on_startup():
 @app.on_event("shutdown")
 async def on_shutdown():
     if bot_application is not None:
+        try:
+            await bot_application.stop()
+        except Exception:
+            pass
         await bot_application.shutdown()

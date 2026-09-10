@@ -300,7 +300,8 @@ async def livekit_token(
     capture microphone audio, and stream it for STT processing.
 
     Token-only: the worker joins via LiveKit's implicit auto-dispatch on
-    participant join. No explicit dispatch (two dispatches = two agents).
+    participant join (same as the reference AgentTalk flow). No explicit
+    dispatch here — dispatching twice creates two agents in one room.
 
     Hard limit: ONE active voice call app-wide (free-tier guard). A second
     caller gets 409 VOICE_BUSY while any room has participants.

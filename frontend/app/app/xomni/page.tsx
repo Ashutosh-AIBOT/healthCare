@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { apiClient, getAccessToken, setAccessToken } from "@/lib/auth-client";
 import { VoiceTalkButton } from "@/components/app/voice-talk-button";
+import { MarkdownMessage } from "@/components/app/markdown-message";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -87,54 +88,7 @@ type VoiceState = "idle" | "requesting" | "recording" | "transcribing" | "error"
 
 // ── Component ───────────────────────────────────────────────────────────────
 
-function ProposalCard({ action, onAccept, onReject }: { action: any, onAccept: () => void, onReject: () => void }) {
-  if (!action || !action.action) return null;
-  const isMealPlan = action.action === "propose_meal_plan";
-  const isTodo = action.action === "propose_todo";
-  const isFitness = action.action === "propose_fitness_activity";
-
-  if (!isMealPlan && !isTodo && !isFitness) return null;
-
-  return (
-    <div className="mt-4 border border-primary/20 bg-primary-soft/30 rounded-xl p-4 shadow-sm w-full max-w-sm">
-      <div className="flex items-center gap-2 mb-3">
-        <Sparkles className="h-4 w-4 text-primary" />
-        <h4 className="text-sm font-semibold text-ink">
-          {isMealPlan ? "Meal Plan Update Proposed" : isFitness ? "Workout Log Proposed" : "Schedule Update Proposed"}
-        </h4>
-      </div>
-
-      <div className="text-[13px] text-ink/80 mb-4 bg-surface p-3 rounded-lg border border-line/50">
-        {isMealPlan && action.proposal && (
-          <pre className="whitespace-pre-wrap font-sans text-xs">
-            {JSON.stringify(action.proposal, null, 2)}
-          </pre>
-        )}
-        {isTodo && (
-          <div>
-            <p className="font-medium text-ink">{action.title}</p>
-            <p className="text-muted text-xs mt-1">Time: {action.start_hour}:00 - {action.end_hour}:00</p>
-          </div>
-        )}
-        {isFitness && (
-          <div>
-            <p className="font-medium text-ink">{action.activity_type}</p>
-            <p className="text-muted text-xs mt-1">{action.duration_minutes} minutes{action.calories_burned ? ` · ${action.calories_burned} kcal` : ""}</p>
-          </div>
-        )}
-      </div>
-
-      <div className="flex gap-2">
-        <Button onClick={onAccept} size="sm" className="w-full bg-primary hover:bg-primary/90 text-white shadow-sm">
-          Accept
-        </Button>
-        <Button onClick={onReject} size="sm" variant="outline" className="w-full">
-          Reject
-        </Button>
-      </div>
-    </div>
-  );
-}
+import { ProposalCard, type ConfirmResult } from "@/components/app/proposal-card";
 
 export default function XomniPage() {
   const router = useRouter();
@@ -617,17 +571,8 @@ export default function XomniPage() {
                             : "bg-transparent text-ink"
                         )}>
                           {message.role === "assistant" ? (
-                            <div className="prose prose-sm max-w-none prose-p:my-2 prose-headings:mt-4 prose-headings:mb-2 prose-headings:font-display prose-headings:text-ink prose-a:text-primary">
-                              {message.content ? message.content.split("\n").map((line, i) => {
-                                const bold = line.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
-                                return (
-                                  <p
-                                    key={i}
-                                    className={line.startsWith("- ") ? "ml-4" : ""}
-                                    dangerouslySetInnerHTML={{ __html: bold || "&nbsp;" }}
-                                  />
-                                );
-                              }) : null}
+                            <div>
+                              {message.content ? <MarkdownMessage content={message.content} /> : null}
                               {message.streaming && (
                                 <div className={cn("flex items-center", message.content ? "mt-2" : "mt-0")}>
                                   <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-primary/15 to-violet-500/15 border border-primary/20 shadow-[0_0_15px_rgba(var(--primary),0.15)] relative overflow-hidden">
@@ -645,30 +590,20 @@ export default function XomniPage() {
                           {message.action && message.role === "assistant" && !message.streaming && (
                             <ProposalCard
                               action={message.action}
-                              onAccept={async () => {
-                                try {
-                                  const token = getAccessToken();
-                                  if (!activeConvId) throw new Error("This proposal is no longer attached to a conversation.");
-                                  const response = await fetch("/api/v1/xomni/actions/confirm", {
-                                    method: "POST",
-                                    headers: {
-                                      "Content-Type": "application/json",
-                                      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                                    },
-                                    credentials: "include",
-                                    body: JSON.stringify({ conversation_id: activeConvId }),
-                                  });
-                                  if (!response.ok) throw new Error((await response.text()) || "Could not apply proposal.");
-                                  // Add a system response back to chat
-                                  setMessages(prev => [...prev, {
-                                    id: `${Date.now()}-sys`,
-                                    role: "user",
-                                    content: "I have accepted this proposal and updated my plan.",
-                                    createdAt: new Date()
-                                  }]);
-                                } catch (e) {
-                                  setError(e instanceof Error ? e.message : "Could not apply proposal.");
-                                }
+                              onAccept={async (edited) => {
+                                const token = getAccessToken();
+                                if (!activeConvId) throw new Error("This proposal is no longer attached to a conversation.");
+                                const response = await fetch("/api/v1/xomni/actions/confirm", {
+                                  method: "POST",
+                                  headers: {
+                                    "Content-Type": "application/json",
+                                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                                  },
+                                  credentials: "include",
+                                  body: JSON.stringify({ conversation_id: activeConvId, edited_action: edited }),
+                                });
+                                if (!response.ok) throw new Error((await response.text()) || "Could not apply proposal.");
+                                return (await response.json()) as ConfirmResult;
                               }}
                               onReject={async () => {
                                 if (activeConvId) {
@@ -683,12 +618,6 @@ export default function XomniPage() {
                                     body: JSON.stringify({ conversation_id: activeConvId }),
                                   });
                                 }
-                                setMessages(prev => [...prev, {
-                                  id: `${Date.now()}-sys`,
-                                  role: "user",
-                                  content: "I rejected this proposal. Let’s adjust it.",
-                                  createdAt: new Date()
-                                }]);
                               }}
                             />
                           )}

@@ -9,11 +9,24 @@ from app.core.deps import get_current_user, get_db
 from app.core.errors import AppError
 from app.models.user import User
 from app.models.api_keys import ApiKey
+from app.models.xomni import UserPersonalContext
 from app.schemas.api_keys import ApiKeyCreate, ApiKeyRead, ApiKeyUpdate
 from app.schemas.auth import ProfileUpdate, UserOut
+from pydantic import BaseModel
 
 
 router = APIRouter(prefix="/profile", tags=["profile"])
+
+
+# Allowlist mirrors xomni_service.PERSONAL_CONTEXT_KEYS (single source there).
+PERSONAL_CONTEXT_KEYS = frozenset({
+    "goals", "dietary_restrictions", "likes", "dislikes", "habits", "activity_level",
+})
+
+
+class PersonalContextUpdate(BaseModel):
+    updates: dict[str, list[str] | str]
+    replace: bool = False
 
 
 async def _get_user_family_id(db: AsyncSession, current_user: User) -> uuid.UUID:
@@ -47,6 +60,55 @@ async def update_my_profile(
     await db.commit()
     await db.refresh(current_user)
     return current_user
+
+
+@router.get("/personal-context", response_model=dict)
+async def get_personal_context(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> dict:
+    """Read the user's confirmed personal context (goals, likes, habits...)."""
+    row = await db.scalar(select(UserPersonalContext).where(UserPersonalContext.user_id == current_user.id))
+    return {
+        "context": row.context_json if row else {},
+        "source": row.source if row else None,
+        "updated_at": row.updated_at.isoformat() if row else None,
+    }
+
+
+@router.patch("/personal-context", response_model=dict)
+async def update_personal_context(
+    payload: PersonalContextUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> dict:
+    """Create or merge user-confirmed personal context (allowlisted fields only)."""
+    unknown = set(payload.updates) - set(PERSONAL_CONTEXT_KEYS)
+    if unknown:
+        raise AppError(code="INVALID_CONTEXT_FIELD", status=422, detail=f"Unsupported context fields: {', '.join(sorted(unknown))}")
+    cleaned: dict[str, object] = {}
+    for key, value in payload.updates.items():
+        vals = [value] if isinstance(value, str) else value
+        if not isinstance(vals, list):
+            raise AppError(code="INVALID_CONTEXT_FIELD", status=422, detail=f"Field '{key}' must be text or a list of texts.")
+        texts = [str(v).strip()[:200] for v in vals if str(v).strip()][:30]
+        if not texts:
+            raise AppError(code="INVALID_CONTEXT_FIELD", status=422, detail=f"Field '{key}' must not be empty.")
+        cleaned[key] = texts[0] if key == "activity_level" and len(texts) == 1 else texts
+    row = await db.scalar(select(UserPersonalContext).where(UserPersonalContext.user_id == current_user.id))
+    if row is None:
+        row = UserPersonalContext(
+            user_id=current_user.id, family_id=current_user.family_id,
+            context_json=cleaned, source="USER_CONFIRMED",
+        )
+        db.add(row)
+    else:
+        row.context_json = cleaned if payload.replace else {**(row.context_json or {}), **cleaned}
+        row.family_id = current_user.family_id
+        row.source = "USER_CONFIRMED"
+    await db.commit()
+    await db.refresh(row)
+    return {"context": row.context_json, "source": row.source, "updated_at": row.updated_at.isoformat()}
 
 
 @router.post("/api-keys", response_model=ApiKeyRead)

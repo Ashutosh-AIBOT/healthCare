@@ -243,47 +243,6 @@ async def reject_action(
     return {"rejected": True}
 
 
-# ─────────────────────────── Voice (Groq Whisper STT) ───────────────────────
-
-
-@router.post("/voice/transcribe", response_model=dict)
-async def transcribe_voice(
-    audio: Annotated[UploadFile, File(description="WebM/OGG/WAV audio from browser")],
-    db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[User, Depends(get_current_user)],
-) -> dict:
-    """
-    Transcribe voice audio via Groq Whisper (whisper-large-v3-turbo).
-
-    Requires Groq API key in Profile > AI Provider Keys.
-    Supports: webm, ogg, wav, mp3, mp4, m4a (max 25MB).
-    """
-    ALLOWED = {"audio/webm", "audio/ogg", "audio/wav", "audio/mpeg",
-               "audio/mp4", "audio/x-m4a", "application/octet-stream"}
-    MAX_BYTES = 25 * 1024 * 1024
-
-    audio_bytes = await audio.read()
-    if len(audio_bytes) > MAX_BYTES:
-        raise HTTPException(status_code=413, detail="Audio too large (max 25 MB).")
-
-    if audio.content_type and audio.content_type not in ALLOWED:
-        raise HTTPException(status_code=415, detail=f"Unsupported audio format: {audio.content_type}")
-
-    gateway = LLMGateway(db, user_id=str(current_user.id))
-    try:
-        transcript = await gateway.transcribe_audio(
-            audio_bytes,
-            filename=audio.filename or "audio.webm",
-            content_type=audio.content_type or "audio/webm",
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=422, detail=f"Transcription failed: {str(e)}")
-
-    return {"transcript": transcript, "provider": "groq-whisper"}
-
-
 # ─────────────────────────── LiveKit token ──────────────────────────────────
 
 

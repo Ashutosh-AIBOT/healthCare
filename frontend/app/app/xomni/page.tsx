@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import {
-  Plus, Send, ChevronRight, Menu, Mic, MicOff, Settings2,
+  Plus, Send, ChevronRight, Menu, Settings2,
   Utensils, Clock, Activity, FileText, Sparkles, X, Volume2, Search,
   MoreHorizontal, Link2, Download, History, BrainCircuit, ActivitySquare, TriangleAlert
 } from "lucide-react";
@@ -15,7 +15,6 @@ import { MarkdownMessage } from "@/components/app/markdown-message";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Radio } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -97,10 +96,6 @@ const QUICK_PROMPTS: Record<ChatMode, Array<{ title: string, desc: string }>> = 
   ],
 };
 
-// ── Voice state ─────────────────────────────────────────────────────────────
-
-type VoiceState = "idle" | "requesting" | "recording" | "transcribing" | "error";
-
 // ── Component ───────────────────────────────────────────────────────────────
 
 import { ProposalCard, type ConfirmResult } from "@/components/app/proposal-card";
@@ -119,15 +114,11 @@ export default function XomniPage() {
   const [leftOpen, setLeftOpen] = useState(true);
   const [mode, setMode] = useState<ChatMode>("general");
   const [modeDropdown, setModeDropdown] = useState(false);
-  const [voiceState, setVoiceState] = useState<VoiceState>("idle");
-  const [voiceError, setVoiceError] = useState<string | null>(null);
   const [ttsEnabled, setTtsEnabled] = useState(true);
 
   // Removed duplicate profile states
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
 
   // ── Scroll to bottom ────────────────────────────────────────────────────
   useEffect(() => {
@@ -331,98 +322,13 @@ export default function XomniPage() {
     [loading, mode, activeConvId, contextMemberId, contextDocumentId, ttsEnabled, voiceRoomActive]
   );
 
-  // ── Voice recording ──────────────────────────────────────────────────────
-  const startVoiceRecording = async () => {
-    setVoiceError(null);
-    setVoiceState("requesting");
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-        ? "audio/webm;codecs=opus"
-        : MediaRecorder.isTypeSupported("audio/webm")
-          ? "audio/webm"
-          : "audio/ogg";
-
-      const recorder = new MediaRecorder(stream, { mimeType });
-      audioChunksRef.current = [];
-
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) audioChunksRef.current.push(e.data);
-      };
-
-      recorder.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop());
-        setVoiceState("transcribing");
-
-        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
-        const formData = new FormData();
-        formData.append("audio", audioBlob, "recording.webm");
-
-        const token = getAccessToken();
-        try {
-          const res = await fetch("/api/v1/xomni/voice/transcribe", {
-            method: "POST",
-            headers: token ? { Authorization: `Bearer ${token}` } : {},
-            credentials: "include",
-            body: formData,
-          });
-
-          if (!res.ok) {
-            const err = await res.json().catch(() => ({ detail: "Transcription failed" }));
-            throw new Error(err.detail || "Transcription failed");
-          }
-
-          const data = await res.json() as { transcript: string };
-          if (data.transcript.trim()) {
-            setInput(data.transcript);
-            await send(data.transcript);
-          } else {
-            setVoiceError("Could not understand audio. Please try again.");
-          }
-        } catch (e) {
-          setVoiceError(e instanceof Error ? e.message : "Voice failed. Check API key.");
-        } finally {
-          setVoiceState("idle");
-        }
-      };
-
-      recorder.start(250);
-      mediaRecorderRef.current = recorder;
-      setVoiceState("recording");
-    } catch (e) {
-      setVoiceState("error");
-      setVoiceError("Microphone access denied. Please allow microphone permissions.");
-    }
-  };
-
-  const stopVoiceRecording = () => {
-    if (mediaRecorderRef.current?.state === "recording") {
-      mediaRecorderRef.current.stop();
-    }
-  };
-
-  const toggleVoice = () => {
-    if (voiceState === "recording") {
-      stopVoiceRecording();
-    } else if (voiceState === "idle") {
-      void startVoiceRecording();
-    }
-  };
-
   // ── Live voice-room transcript → same send path as typed input ──────────
-  // History, points and guardrails apply unchanged; MediaRecorder flow above
-  // stays untouched as the fallback.
   const handleVoiceRoomTranscript = useCallback(
     (text: string) => {
       void send(text);
     },
     [send]
   );
-
-  const handleVoiceRoomError = useCallback((message: string) => {
-    setVoiceError(message);
-  }, []);
 
   // ── Load conversation messages ──────────────────────────────────────────
   const loadConversation = async (convId: string) => {
@@ -554,16 +460,6 @@ export default function XomniPage() {
           </div>
 
           <div className="flex items-center gap-3">
-            <button
-              onClick={toggleVoice}
-              className={cn(
-                "hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium rounded-lg shadow-sm transition-all",
-                voiceState === "recording" ? "bg-accent-water text-primary-foreground animate-pulse" : "bg-primary text-primary-foreground hover:brightness-95"
-              )}
-            >
-              <Radio className={cn("h-3.5 w-3.5", voiceState === "recording" ? "animate-ping" : "animate-pulse")} />
-              {voiceState === "recording" ? "Listening..." : "Voice Talk"}
-            </button>
             <button
               onClick={() => setTtsEnabled(!ttsEnabled)}
               className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-ink text-paper text-[12px] font-medium rounded-lg hover:bg-ink/90 transition-colors"
@@ -737,24 +633,8 @@ export default function XomniPage() {
           {/* Unified Input Box (Docked statically at bottom) */}
           <div className="shrink-0 w-full bg-paper px-4 pb-6 pt-2 z-30">
             <div className="max-w-3xl mx-auto relative">
-              {(voiceError || voiceState === "recording" || voiceState === "transcribing") && (
-                <div className="flex justify-center mb-3">
-                  <div className={cn(
-                    "text-[11px] rounded-full px-4 py-1.5 flex items-center gap-2 shadow-sm font-medium backdrop-blur",
-                    voiceState === "recording" ? "bg-accent-water text-primary-foreground animate-pulse" :
-                      voiceState === "transcribing" ? "bg-primary-soft text-primary border border-primary/20" :
-                        "bg-critical text-primary-foreground"
-                  )}>
-                    {voiceState === "recording" && <><Mic className="h-3 w-3" /> Recording… tap mic to stop</>}
-                    {voiceState === "transcribing" && <><span className="h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent" /> Transcribing…</>}
-                    {voiceError && voiceError}
-                  </div>
-                </div>
-              )}
-
               <div className={cn(
-                "bg-surface border border-border shadow-sm rounded-[1.25rem] p-1.5 flex items-end gap-1 sm:gap-2 relative focus-within:ring-2 focus-within:ring-primary focus-within:border-primary transition-all",
-                voiceState === "recording" && "ring-2 ring-accent-water/30 border-accent-water/50"
+                "bg-surface border border-border shadow-sm rounded-[1.25rem] p-1.5 flex items-end gap-1 sm:gap-2 relative focus-within:ring-2 focus-within:ring-primary focus-within:border-primary transition-all"
               )}>
                 <button className="h-10 w-10 shrink-0 rounded-full flex items-center justify-center text-muted hover:bg-mist hover:text-ink transition-colors mb-0.5" title="Attach file">
                   <Link2 className="h-4 w-4" />
@@ -774,19 +654,6 @@ export default function XomniPage() {
                 />
 
                 <div className="flex items-center gap-1 mb-0.5 pr-1">
-                  <button
-                    onClick={toggleVoice}
-                    className={cn(
-                      "h-10 w-10 shrink-0 rounded-full flex items-center justify-center transition-all",
-                      voiceState === "recording"
-                        ? "bg-accent-water text-primary-foreground animate-pulse"
-                        : "bg-primary/10 text-primary hover:bg-primary/20"
-                    )}
-                    title={voiceState === "recording" ? "Stop Voice Talk" : "Start Voice Talk"}
-                  >
-                    {voiceState === "recording" ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-                  </button>
-
                   <VoiceTalkButton
                     onTranscript={handleVoiceRoomTranscript}
                     onError={handleVoiceRoomError}

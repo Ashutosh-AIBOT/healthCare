@@ -68,13 +68,57 @@ export default function FitnessPage() {
   const loadData = useCallback(async () => {
     try {
       const [profRes, actRes, sugRes] = await Promise.all([
-        apiClient<FitnessProfile>("/api/v1/fitness/profile"),
-        apiClient<ActivitiesResponse>("/api/v1/fitness/activities?days=7"),
+        apiClient<any>("/api/v1/fitness/profile"),
+        apiClient<any>("/api/v1/fitness/activities?days=7"),
         apiClient<{ suggestions: FoodSuggestion[] }>("/api/v1/fitness/suggestions"),
       ]);
 
-      if (profRes.data) setProfile(profRes.data);
-      if (actRes.data) setActivitiesData(actRes.data);
+      // Backend nests level details under `level_info` — flatten for the UI.
+      const p = profRes.data;
+      if (p) {
+        const info = p.level_info ?? {};
+        setProfile({
+          id: p.id,
+          level: p.level,
+          level_name: info.name ?? "",
+          level_subtitle: info.subtitle ?? "",
+          level_description: info.description ?? "",
+          level_color: info.color ?? "",
+          goal_type: p.goal_type ?? "",
+          weekly_workout_days: p.weekly_workout_days ?? info.weekly_days ?? 4,
+          recommended_workouts: info.recommended_workouts ?? [],
+          intensity: info.intensity ?? "",
+          rest_days: info.rest_days ?? 3,
+        });
+      }
+      // Backend returns {logs, week_chart, summary} — derive the totals the
+      // stat cards need instead of reading missing top-level fields.
+      const a = actRes.data;
+      if (a) {
+        const logs: ActivityLogItem[] = Array.isArray(a.logs)
+          ? a.logs
+          : Array.isArray(a.activities)
+            ? a.activities
+            : [];
+        const chart: ActivitiesResponse["week_chart"] = Array.isArray(a.week_chart)
+          ? a.week_chart
+          : [];
+        const totalMin =
+          a.total_minutes ??
+          a.summary?.total_minutes ??
+          chart.reduce((t: number, d: any) => t + (Number(d.minutes) || 0), 0);
+        const totalCal =
+          a.total_calories ??
+          chart.reduce((t: number, d: any) => t + (Number(d.calories) || 0), 0);
+        setActivitiesData({
+          days: a.days ?? 7,
+          total_minutes: totalMin,
+          total_calories: totalCal,
+          workout_count: a.workout_count ?? logs.length,
+          week_chart: chart,
+          activities: logs,
+        });
+      }
       if (Array.isArray(sugRes.data?.suggestions)) {
         setSuggestions(sugRes.data.suggestions);
       }

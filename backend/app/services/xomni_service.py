@@ -51,11 +51,16 @@ Core Intelligence Guidelines:
    - If a user asks for high-sugar, deep-fried, or nutrient-poor foods, DO NOT just say "Sure, go ahead."
    - Respectfully and scientifically counter: explain the metabolic consequence (e.g., insulin spikes, energy crash, nutrient deficiency), and immediately propose a delicious, nutritionally superior alternative that satisfies the craving while protecting their health.
 3. Strict Permission Guardrail for Plan Updates:
-   - NEVER modify or claim you have updated the user's meal plan without their explicit confirmation.
-   - Any proposed addition, replacement, or modification MUST be presented to the user first.
-   - When suggesting a concrete change to their plan, ask: "Would you like me to add this to your meal plan?" and output a JSON proposal block:
-     {"action": "propose_meal_plan", "title": "Add Grilled Paneer & Quinoa", "meal_type": "lunch", "proposal": [{"name": "Grilled Paneer", "calories": 220, "protein": 18, "carbs": 4, "fats": 12}, {"name": "Quinoa Bowl", "calories": 180, "protein": 8, "carbs": 32, "fats": 3}], "notes": "High protein lunch replacement"}
-   - This renders as an interactive Accept/Decline card for the user. Only once approved does the database update.
+    - NEVER modify or claim you have updated the user's meal plan without their explicit confirmation.
+    - Any proposed addition, replacement, or modification MUST be presented to the user first.
+    - When suggesting a concrete change to their plan, ask: "Would you like me to add this to your meal plan?" and output a JSON proposal block:
+      {"action": "propose_meal_plan", "title": "Add Grilled Paneer & Quinoa", "meal_type": "lunch", "proposal": [{"name": "Grilled Paneer", "calories": 220, "protein": 18, "carbs": 4, "fats": 12}, {"name": "Quinoa Bowl", "calories": 180, "protein": 8, "carbs": 32, "fats": 3}], "notes": "High protein lunch replacement"}
+    - This renders as an interactive Accept/Decline card for the user. Only once approved does the database update.
+    - RULES for the JSON block (must follow exactly):
+      (a) Exactly one JSON action block per reply, with an "action" key. Never paste a second "import-ready" JSON copy.
+      (b) Meal items use ONLY these keys: name, calories, protein, carbs, fats. Never use description/protein_g/carbs_g/fat_g or a "meals" array.
+      (c) meal_type is one of: breakfast, lunch, snacks, dinner.
+      (d) Never invent action names. The only valid actions are: propose_meal_plan, propose_todo, propose_fitness_activity, propose_personal_context.
 4. Specificity & Practicality:
    - Always state exact grams, calories, and protein numbers.
    - Keep suggestions budget-friendly and accessible.
@@ -75,27 +80,36 @@ When a user shares a durable preference, habit, goal, dislike, dietary restricti
 Only include categories supported by the user's statement. Never store a medical diagnosis or sensitive fact as a preference without explicit confirmation.
 
 Be conversational, helpful, and always recommend professional medical advice for medical issues.
+When you propose something that should be saved (meal plan, task, workout, personal preferences), use exactly one JSON action block with an "action" key so the user gets an Accept/Decline card. Never claim anything was saved before the user confirms.
 """
 
 TIMETABLE_SYSTEM_PROMPT = """\
 You are Xomni with timetable, schedule, and todo management capabilities.
 Guidelines:
 1. When users ask you to schedule or add tasks (e.g., "Add cardio at 5pm", "Add grocery shopping tomorrow"):
-   - NEVER silently add it. Ask for permission first: "Shall I add this to your schedule?"
-   - Respond with a JSON action block. Include recurrence_rule (once, daily, weekdays, or weekly) only when requested, and recurrence_until/recurrence_days when needed:
-     {"action": "propose_todo", "title": "Evening Cardio", "start_hour": 17, "end_hour": 18, "priority": "important", "recurrence_rule": "once", "created_by": "XOMNI"}
+    - NEVER silently add it. Ask for permission first: "Shall I add this to your schedule?"
+    - Respond with a JSON action block. Include recurrence_rule (once, daily, weekdays, or weekly) only when requested, and recurrence_until/recurrence_days when needed:
+      {"action": "propose_todo", "title": "Evening Cardio", "start_hour": 17, "end_hour": 18, "priority": "important", "recurrence_rule": "once", "created_by": "XOMNI"}
+    - RULES: exactly one JSON action block per reply with an "action" key; title is required; priority is one of normal/important/less; start_hour/end_hour are integers 0-24. Never invent other action names.
 2. When users ask to complete or check off a task:
-   - Respond with: {"action": "complete_todo", "existing_title": "...", "due_date": "YYYY-MM-DD"}
+    - Respond with: {"action": "complete_todo", "existing_title": "...", "due_date": "YYYY-MM-DD"}
 3. When users ask to change an existing task, never create a duplicate. Ask for permission first and emit:
-   {"action": "update_todo", "existing_title": "...", "existing_due_date": "YYYY-MM-DD", "title": "New title", "start_hour": 14, "end_hour": 16, "due_date": "YYYY-MM-DD", "priority": "normal"}
-   Include only fields the user asked to change. Use the exact existing title when it is known; if it is ambiguous, ask a clarification question instead of proposing an update.
+    {"action": "update_todo", "existing_title": "...", "existing_due_date": "YYYY-MM-DD", "title": "New title", "start_hour": 14, "end_hour": 16, "due_date": "YYYY-MM-DD", "priority": "normal"}
+    Include only fields the user asked to change. Use the exact existing title when it is known; if it is ambiguous, ask a clarification question instead of proposing an update.
 4. When users ask to remove a task, ask for permission first and emit:
-   {"action": "delete_todo", "existing_title": "...", "due_date": "YYYY-MM-DD"}
-   Never delete a task without the confirmation step.
+    {"action": "delete_todo", "existing_title": "...", "due_date": "YYYY-MM-DD"}
+    Never delete a task without the confirmation step.
 5. When users ask about their 3 timetable templates (Productive Day, Backup Day, Holiday Day):
-   - Explain the structure of each template and how their daily adherence score is calculated.
+    - Explain the structure of each template and how their daily adherence score is calculated.
 6. All tasks proposed by you will be tagged with `created_by: 'XOMNI'` so users always know AI proposed it, while tasks they create themselves are tagged as manual.
 """
+
+PERSONAL_CONTEXT_INSTRUCTION = """\
+When the user confirms personal facts (goals, dietary restrictions, likes, dislikes, habits, activity level) for future suggestions, emit exactly one JSON block:
+{"action": "propose_personal_context", "updates": {"goals": ["..."], "dietary_restrictions": ["..."], "likes": ["..."], "dislikes": ["..."], "habits": ["..."], "activity_level": ["...]"}}
+Include ONLY the categories the user explicitly confirmed, and only those six keys. Never store anything silently — always ask first and wait for confirmation.
+"""
+
 
 
 
@@ -108,10 +122,10 @@ def _get_mode_system_prompt(mode: str) -> str:
     elif mode == "fitness":
         return GENERAL_SYSTEM_PROMPT + """
 
-Focus on fitness, exercise, and sport nutrition topics. When the user asks to add a workout to their activity log, ask for confirmation and emit:
+Focus on fitness, exercise, and sport nutrition topics. When the user asks to add a workout to their activity log, ask for confirmation and emit exactly one JSON block:
 {"action": "propose_fitness_activity", "activity_type": "walking", "duration_minutes": 30, "calories_burned": 120, "logged_date": "2026-09-09", "notes": "Easy recovery walk"}
-Never log an activity until the user confirms.
-"""
+RULES: activity_type is a short label (max 80 chars); duration_minutes is a positive integer below 1440. Never log an activity until the user confirms. Never invent other action names.
+""" + "\n\n" + PERSONAL_CONTEXT_INSTRUCTION
     elif mode == "reports":
         return GENERAL_SYSTEM_PROMPT + "\n\nFocus on interpreting lab report values and health metrics."
     else:
@@ -199,6 +213,174 @@ def _extract_action(answer_text: str) -> tuple[str, dict | None]:
             clean = (answer_text[:start] + answer_text[start + end:]).strip()
             return clean, _normalize_action(candidate)
         cursor = start + 1
+
+
+# ---- Canonical dashboard-action shapes ------------------------------------
+# The chat model must emit exactly these shapes. Older / free-form variants
+# (e.g. {"meals": [...], "description": ..., "protein_g": ...}) are normalized
+# here so a slightly-off proposal still saves instead of silently dying.
+# Main's _normalize_action gate (below) runs first at extraction time; these
+# validators run at confirmation time on the stored payload.
+
+MEAL_TYPES = ("breakfast", "lunch", "snacks", "dinner")
+
+_MEAL_ITEM_ALIASES = {
+    "name": ("name", "description", "title", "food", "item"),
+    "calories": ("calories", "kcal", "energy", "energy_kcal"),
+    "protein": ("protein", "protein_g"),
+    "carbs": ("carbs", "carbs_g", "carbohydrates", "carb"),
+    "fats": ("fats", "fat", "fat_g"),
+}
+
+PERSONAL_CONTEXT_KEYS = frozenset({
+    "goals", "dietary_restrictions", "likes", "dislikes", "habits",
+    "activity_level", "communication_preferences",
+})
+
+DASHBOARD_URLS = {
+    "propose_meal_plan": "/app/food",
+    "propose_todo": "/app/time",
+    "propose_fitness_activity": "/app/fitness",
+    "propose_personal_context": "/app/profile",
+}
+
+
+def _pick_alias(source: dict, aliases: tuple[str, ...]) -> Any:
+    for key in aliases:
+        if key in source and source[key] is not None:
+            return source[key]
+    return None
+
+
+def _coerce_nutrient(value: Any, *, field: str, item_name: str) -> float:
+    try:
+        num = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"Meal item '{item_name}' has an invalid {field}.")
+    if num < 0 or num > 5000:
+        raise ValueError(f"Meal item '{item_name}' has an unrealistic {field}.")
+    return round(num, 1)
+
+
+def _normalize_meal_items(proposal: Any) -> list[dict]:
+    """Normalize a meal proposal list to [{name, calories, protein, carbs, fats}]."""
+    if not isinstance(proposal, list) or not proposal:
+        raise ValueError("The proposed meal plan has no meal items.")
+    items: list[dict] = []
+    for raw in proposal:
+        if not isinstance(raw, dict):
+            raise ValueError("Each meal item must be an object with a name.")
+        name = str(_pick_alias(raw, _MEAL_ITEM_ALIASES["name"]) or "").strip()[:200]
+        if not name:
+            raise ValueError("Each meal item must have a name.")
+        items.append({
+            "name": name,
+            "calories": _coerce_nutrient(_pick_alias(raw, _MEAL_ITEM_ALIASES["calories"]) or 0, field="calories", item_name=name),
+            "protein": _coerce_nutrient(_pick_alias(raw, _MEAL_ITEM_ALIASES["protein"]) or 0, field="protein", item_name=name),
+            "carbs": _coerce_nutrient(_pick_alias(raw, _MEAL_ITEM_ALIASES["carbs"]) or 0, field="carbs", item_name=name),
+            "fats": _coerce_nutrient(_pick_alias(raw, _MEAL_ITEM_ALIASES["fats"]) or 0, field="fats", item_name=name),
+        })
+        if len(items) >= 50:
+            break
+    return items
+
+
+def _normalize_meal_buckets(action: dict) -> dict[str, list[dict]]:
+    """Normalize any meal-plan action variant to {meal_type: [items]}.
+
+    Accepts the canonical {"meal_type", "proposal"} shape and the legacy
+    {"meals": [{"name", "time"/"meal", ...}]} shape (bucketed by meal name or
+    time of day).
+    """
+    buckets: dict[str, list[dict]] = {}
+    if isinstance(action.get("proposal"), list):
+        meal_type = str(action.get("meal_type") or "lunch").lower()
+        if meal_type not in MEAL_TYPES:
+            meal_type = "lunch"
+        buckets[meal_type] = _normalize_meal_items(action["proposal"])
+        return buckets
+    if isinstance(action.get("meals"), list):
+        for raw in action["meals"]:
+            if not isinstance(raw, dict):
+                continue
+            label = str(raw.get("meal") or raw.get("name") or "").lower()
+            bucket = next((m for m in MEAL_TYPES if m in label), None)
+            if bucket is None:
+                hour = -1
+                for key in ("time", "slot"):
+                    val = str(raw.get(key) or "")
+                    import re as _re
+                    m = _re.search(r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", val.lower())
+                    if m:
+                        hour = int(m.group(1)) % 24
+                        if m.group(3) == "pm" and hour < 12:
+                            hour += 12
+                        break
+                bucket = (
+                    "breakfast" if 0 <= hour < 11
+                    else "lunch" if hour < 16
+                    else "snacks" if hour < 19
+                    else "dinner" if hour >= 0
+                    else "lunch"
+                )
+            buckets.setdefault(bucket, []).extend(_normalize_meal_items([raw]))
+        if not buckets:
+            raise ValueError("The proposed meal plan has no meal items.")
+        return buckets
+    raise ValueError(
+        "The meal proposal needs a 'proposal' list of items "
+        "(name, calories, protein, carbs, fats)."
+    )
+
+
+def _normalize_todo_action(action: dict) -> dict:
+    """Validate a propose_todo action; raises ValueError with a user-safe message."""
+    title = str(action.get("title") or "").strip()[:200]
+    if not title:
+        raise ValueError("The proposed task has no title.")
+    priority = action.get("priority")
+    if priority not in {"normal", "important", "less"}:
+        priority = "normal"
+    recurrence = action.get("recurrence_rule")
+    if recurrence not in {"once", "daily", "weekdays", "weekly"}:
+        recurrence = "once"
+    out = dict(action)
+    out["title"] = title
+    out["priority"] = priority
+    out["recurrence_rule"] = recurrence
+    return out
+
+
+def _normalize_fitness_action(action: dict) -> dict:
+    """Validate a propose_fitness_activity action."""
+    activity_type = str(action.get("activity_type") or "other").strip()[:80]
+    duration = action.get("duration_minutes")
+    if not activity_type or not isinstance(duration, int) or duration <= 0 or duration >= 1440:
+        raise ValueError("The proposed fitness activity is invalid.")
+    out = dict(action)
+    out["activity_type"] = activity_type
+    out["duration_minutes"] = duration
+    return out
+
+
+def _normalize_personal_context(updates: Any) -> dict:
+    """Validate personal-context updates against the allowlist."""
+    if not isinstance(updates, dict) or not updates:
+        raise ValueError("There is no personal context to save.")
+    unknown = set(updates) - set(PERSONAL_CONTEXT_KEYS)
+    if unknown:
+        raise ValueError(f"Unsupported context fields: {', '.join(sorted(unknown))}.")
+    cleaned: dict[str, Any] = {}
+    for key, value in updates.items():
+        if isinstance(value, str):
+            value = [value]
+        if not isinstance(value, list) or not value:
+            raise ValueError(f"Context field '{key}' must be a non-empty list of short texts.")
+        texts = [str(v).strip()[:200] for v in value if str(v).strip()][:30]
+        if not texts:
+            raise ValueError(f"Context field '{key}' must be a non-empty list of short texts.")
+        cleaned[key] = texts[0] if key == "activity_level" and len(texts) == 1 else texts
+    return cleaned
 
 
 _SUPPORTED_ACTIONS = {
@@ -398,8 +580,13 @@ async def apply_pending_action(
     user_id: uuid.UUID,
     family_id: uuid.UUID,
     conversation_id: uuid.UUID,
+    edited_action: dict | None = None,
 ) -> dict[str, Any]:
-    """Apply a previously proposed action after an explicit user confirmation."""
+    """Apply a previously proposed action after an explicit user confirmation.
+
+    `edited_action` carries user edits made in the chat preview card; it is
+    re-validated exactly like the model proposal (never trusted as-is).
+    """
     from app.models.time import TimeBlock, TimeTimetable, Todo
     from app.services.time_service import time_service
 
@@ -415,19 +602,30 @@ async def apply_pending_action(
         await db.flush()
         raise ValueError("That proposal has expired. Please ask Xomni again.")
 
-    action = conv.pending_action.get("action") if isinstance(conv.pending_action, dict) else None
-    if not isinstance(action, dict):
+    stored = conv.pending_action.get("action") if isinstance(conv.pending_action, dict) else None
+    if not isinstance(stored, dict):
         raise ValueError("The pending Xomni action is invalid.")
+    action = dict(stored)
+    if edited_action is not None:
+        if not isinstance(edited_action, dict):
+            raise ValueError("The edited proposal is invalid.")
+        # Only the payload may be edited — the action kind stays server-owned.
+        for key, value in edited_action.items():
+            if key != "action":
+                action[key] = value
 
     action = _normalize_action(action)
     if action is None:
         raise ValueError("The pending Xomni action is invalid or unsupported.")
     action_name = action.get("action")
-    result: dict[str, Any] = {"action": action_name, "affected": []}
+    result: dict[str, Any] = {
+        "action": action_name,
+        "affected": [],
+        "dashboard_url": DASHBOARD_URLS.get(action_name or ""),
+    }
     if action_name == "propose_todo":
-        title = str(action.get("title") or "").strip()
-        if not title:
-            raise ValueError("The proposed task has no title.")
+        action = _normalize_todo_action(action)
+        title = action["title"]
         await time_service.ensure_defaults(db, family_id, user_id)
         tt = await db.scalar(select(TimeTimetable).where(
             TimeTimetable.family_id == family_id,
@@ -519,20 +717,25 @@ async def apply_pending_action(
                 operation = "updated"
             result["affected"].append({"type": "todo", "id": str(todo.id), "operation": operation})
     elif action_name == "propose_meal_plan":
-        from app.models.xomni import MealPlan
+        from datetime import datetime as _dt
+        from app.models.xomni import MealPlan, MealPlanHistory
 
+        buckets = _normalize_meal_buckets(action)
         plan = await db.scalar(select(MealPlan).where(MealPlan.user_id == user_id).order_by(MealPlan.updated_at.desc()))
         current = dict(plan.plan_json or {}) if plan else {}
-        meal_type = str(action.get("meal_type") or "lunch")
-        if meal_type not in {"breakfast", "lunch", "snacks", "dinner"}:
-            meal_type = "lunch"
-        proposal = action.get("proposal")
-        items = proposal if isinstance(proposal, list) else [proposal]
-        items = [item for item in items if isinstance(item, dict) and item.get("name")]
-        if not items:
-            raise ValueError("The proposed meal plan has no meal items.")
-        current[meal_type] = items
+        for meal_type, items in buckets.items():
+            current[meal_type] = items
         if plan:
+            # Snapshot history first (parity with /nutrition/meal-plan/save).
+            db.add(MealPlanHistory(
+                user_id=user_id,
+                meal_plan_id=plan.id,
+                plan_json=plan.plan_json,
+                created_by=plan.created_by,
+                version=plan.version,
+                valid_from=plan.created_at,
+                valid_to=_dt.now(UTC),
+            ))
             plan.plan_json = current
             plan.created_by = "XOMNI"
             plan.ai_generated = True
@@ -541,14 +744,14 @@ async def apply_pending_action(
             plan = MealPlan(user_id=user_id, plan_json=current, created_by="XOMNI", ai_generated=True, version=1)
             db.add(plan)
         await db.flush()
-        result["affected"].append({"type": "meal_plan", "id": str(plan.id), "meal_type": meal_type})
+        result["affected"].append({"type": "meal_plan", "id": str(plan.id), "meal_types": sorted(buckets)})
+        result["version"] = plan.version
     elif action_name == "propose_fitness_activity":
         from app.models.xomni import ActivityLog
 
-        activity_type = str(action.get("activity_type") or "other").strip()[:80]
-        duration = action.get("duration_minutes")
-        if not activity_type or not isinstance(duration, int) or duration <= 0 or duration >= 1440:
-            raise ValueError("The proposed fitness activity is invalid.")
+        action = _normalize_fitness_action(action)
+        activity_type = action["activity_type"]
+        duration = action["duration_minutes"]
         logged_date = date.today()
         if isinstance(action.get("logged_date"), str):
             try:
@@ -570,10 +773,7 @@ async def apply_pending_action(
     elif action_name == "propose_personal_context":
         from app.models.rag_context import UserPersonalContext
 
-        allowed = {"habits", "likes", "dislikes", "goals", "dietary_restrictions", "communication_preferences"}
-        updates = action.get("updates")
-        if not isinstance(updates, dict) or not updates or set(updates) - allowed:
-            raise ValueError("The proposed personal context is invalid.")
+        updates = _normalize_personal_context(action.get("updates"))
         row = await db.scalar(select(UserPersonalContext).where(UserPersonalContext.user_id == user_id))
         if row is None:
             row = UserPersonalContext(user_id=user_id, family_id=family_id, context_json=updates, source="XOMNI_CONFIRMED")

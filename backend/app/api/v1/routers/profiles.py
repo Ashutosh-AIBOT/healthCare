@@ -1,9 +1,8 @@
 import uuid
-from typing import Any
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,14 +18,17 @@ from app.schemas.auth import ProfileUpdate, UserOut
 router = APIRouter(prefix="/profile", tags=["profile"])
 
 
+# Allowlist: main's six keys + activity_level (single source; mirrors
+# xomni_service.PERSONAL_CONTEXT_KEYS).
+PERSONAL_CONTEXT_KEYS = frozenset({
+    "goals", "dietary_restrictions", "likes", "dislikes", "habits",
+    "activity_level", "communication_preferences",
+})
+
+
 class PersonalContextUpdate(BaseModel):
-    updates: dict[str, Any] = Field(default_factory=dict)
+    updates: dict[str, list[str] | str]
     replace: bool = False
-
-
-_PERSONAL_CONTEXT_KEYS = {
-    "habits", "likes", "dislikes", "goals", "dietary_restrictions", "communication_preferences",
-}
 
 
 async def _get_user_family_id(db: AsyncSession, current_user: User) -> uuid.UUID:
@@ -67,8 +69,13 @@ async def get_personal_context(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> dict:
+    """Read the user's confirmed personal context (goals, likes, habits...)."""
     row = await db.scalar(select(UserPersonalContext).where(UserPersonalContext.user_id == current_user.id))
-    return {"context": row.context_json if row else {}, "source": row.source if row else None, "updated_at": row.updated_at.isoformat() if row else None}
+    return {
+        "context": row.context_json if row else {},
+        "source": row.source if row else None,
+        "updated_at": row.updated_at.isoformat() if row else None,
+    }
 
 
 @router.patch("/personal-context", response_model=dict)
@@ -77,15 +84,28 @@ async def update_personal_context(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> dict:
-    unknown = set(payload.updates) - _PERSONAL_CONTEXT_KEYS
+    """Create or merge user-confirmed personal context (allowlisted fields only)."""
+    unknown = set(payload.updates) - set(PERSONAL_CONTEXT_KEYS)
     if unknown:
         raise AppError(code="INVALID_CONTEXT_FIELD", status=422, detail=f"Unsupported context fields: {', '.join(sorted(unknown))}")
+    cleaned: dict[str, object] = {}
+    for key, value in payload.updates.items():
+        vals = [value] if isinstance(value, str) else value
+        if not isinstance(vals, list):
+            raise AppError(code="INVALID_CONTEXT_FIELD", status=422, detail=f"Field '{key}' must be text or a list of texts.")
+        texts = [str(v).strip()[:200] for v in vals if str(v).strip()][:30]
+        if not texts:
+            raise AppError(code="INVALID_CONTEXT_FIELD", status=422, detail=f"Field '{key}' must not be empty.")
+        cleaned[key] = texts[0] if key == "activity_level" and len(texts) == 1 else texts
     row = await db.scalar(select(UserPersonalContext).where(UserPersonalContext.user_id == current_user.id))
     if row is None:
-        row = UserPersonalContext(user_id=current_user.id, family_id=current_user.family_id, context_json=dict(payload.updates), source="USER_CONFIRMED")
+        row = UserPersonalContext(
+            user_id=current_user.id, family_id=current_user.family_id,
+            context_json=cleaned, source="USER_CONFIRMED",
+        )
         db.add(row)
     else:
-        row.context_json = dict(payload.updates) if payload.replace else {**(row.context_json or {}), **payload.updates}
+        row.context_json = cleaned if payload.replace else {**(row.context_json or {}), **cleaned}
         row.family_id = current_user.family_id
         row.source = "USER_CONFIRMED"
     await db.commit()

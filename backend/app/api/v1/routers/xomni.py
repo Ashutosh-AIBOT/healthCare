@@ -54,6 +54,7 @@ class ChatResponse(BaseModel):
 
 class ActionDecisionRequest(BaseModel):
     conversation_id: uuid.UUID
+    edited_action: dict | None = None  # user edits from the preview card
 
 
 class ConversationOut(BaseModel):
@@ -211,14 +212,18 @@ async def confirm_action(
     if current_user.family_id is None:
         raise HTTPException(status_code=400, detail="Join a family first to use Xomni actions.")
     try:
-        return await xomni_service.apply_pending_action(
+        result = await xomni_service.apply_pending_action(
             db,
             user_id=current_user.id,
             family_id=current_user.family_id,
             conversation_id=payload.conversation_id,
+            edited_action=payload.edited_action,
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    # Server-owned result card data: no client-side message forging needed.
+    result["confirmed"] = True
+    return result
 
 
 @router.post("/actions/reject", response_model=dict)

@@ -125,6 +125,7 @@ async def chat(
     conv_id_str: str = result.get("conversation_id", "")
     msg_id_str: str = result.get("message_id", "")
     action = result.get("action")
+    citations = result.get("citations", [])
 
     async def event_stream() -> AsyncIterator[bytes]:
         # First emit metadata
@@ -134,6 +135,7 @@ async def chat(
                 "conversation_id": conv_id_str,
                 "message_id": msg_id_str,
                 "action": action,
+                "citations": citations,
             })
             + "\n\n"
         ).encode()
@@ -317,6 +319,26 @@ async def livekit_token(
 
 
 # ─────────────────────────── Conversations ──────────────────────────────────
+
+
+@router.get("/context-summary", response_model=dict)
+async def context_summary(
+    mode: str = "general",
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Compact own-data context for the realtime voice worker.
+
+    Same assembly as chat turns (mode-aware, summarized, citations
+    included) so voice replies are personalized without refetching
+    every record. Empty block when nothing is on file.
+    """
+    if mode not in ("general", "food", "timetable", "reports", "fitness"):
+        mode = "general"
+    block, citations = await xomni_service._assemble_user_context(
+        db, user_id=current_user.id, mode=mode, message=""
+    )
+    return {"context": block, "citations": citations, "mode": mode}
 
 
 @router.get("/conversations", response_model=list[ConversationOut])

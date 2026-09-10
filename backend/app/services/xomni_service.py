@@ -331,8 +331,12 @@ async def apply_pending_action(
     return result
 
 
-async def _get_learn_context(db: AsyncSession, question: str) -> str:
-    """Retrieve relevant learn articles from DB for RAG context."""
+async def _get_learn_context(db: AsyncSession, question: str) -> tuple[str, list[dict]]:
+    """Retrieve relevant learn articles from DB for RAG context.
+
+    Returns (context_text, citations). Citations carry item id/slug so chat
+    answers can reference real catalog entries.
+    """
     try:
         # Simple keyword search across learn items
         from app.models.learn import LearnItem  # noqa
@@ -352,19 +356,76 @@ async def _get_learn_context(db: AsyncSession, question: str) -> str:
         top = relevant[:3]
 
         if not top:
-            return ""
+            return "", []
 
         parts = ["Relevant nutrition/food knowledge from our database:"]
+        citations: list[dict] = []
         for _, item in top:
             parts.append(f"\n### {item.title}")
             if item.description:
                 parts.append(item.description)
             if item.theory:
                 parts.append(item.theory[:500])
+            citations.append({
+                "source": "learn_item",
+                "document_id": str(item.id),
+                "page": None,
+                "label": item.title,
+            })
 
-        return "\n".join(parts)
+        return "\n".join(parts), citations
     except Exception:
-        return ""
+        return "", []
+
+
+async def _get_checkup_context(
+    db: AsyncSession, question: str, limit: int = 5
+) -> tuple[str, list[dict]]:
+    """Retrieve relevant body-test catalog entries for checkup questions.
+
+    Knowledge catalog only (what tests check, prep, fasting) — never user data.
+    Returns (context_text, citations).
+    """
+    try:
+        from app.models.learn import BodyTest  # noqa
+        q_lower = question.lower()
+        keywords = {k for k in q_lower.split() if len(k) > 3}
+        if not keywords:
+            return "", []
+        tests_q = select(BodyTest).limit(100)
+        tests = list((await db.execute(tests_q)).scalars().all())
+
+        scored = []
+        for t in tests:
+            hay = f"{t.name} {t.what_it_checks or ''}".lower()
+            overlap = sum(1 for k in keywords if k in hay)
+            if overlap > 0:
+                scored.append((overlap, t))
+        scored.sort(key=lambda x: x[0], reverse=True)
+        top = [t for _, t in scored[:limit]]
+        if not top:
+            return "", []
+
+        parts = ["Relevant test information from our catalog:"]
+        citations: list[dict] = []
+        for t in top:
+            line = f"\n### {t.name}"
+            if t.what_it_checks:
+                line += f" — {t.what_it_checks[:300]}"
+            if t.prep_note:
+                line += f" (Prep: {t.prep_note[:200]})"
+            if t.fasting_required:
+                line += " [fasting required]"
+            parts.append(line)
+            citations.append({
+                "source": "body_test",
+                "document_id": str(t.id),
+                "page": None,
+                "label": t.name,
+            })
+        return "\n".join(parts), citations
+    except Exception:
+        return "", []
 
 
 async def _get_conversation_history(
@@ -380,6 +441,272 @@ async def _get_conversation_history(
     messages = list((await db.execute(q)).scalars().all())
     messages.reverse()
     return [{"role": m.role, "content": m.content} for m in messages]
+
+
+# ── Per-turn user context assembly (P1/P2) ────────────────────────────────
+# Own data only (user_id-scoped reads, no family reads). Each source is
+# summarized defensively: missing data becomes one "unknown" line so the
+# model asks instead of hallucinating. Bodies are never logged.
+
+CONTEXT_BUDGET_CHARS = 4800  # ~1200 tokens; oldest/lowest-priority dropped first
+
+
+def context_assembly_enabled() -> bool:
+    """Feature flag: explicit env wins, else on everywhere except production."""
+    import os
+
+    raw = os.environ.get("XOMNI_CONTEXT_ASSEMBLY", "").strip().lower()
+    if raw in ("1", "true", "yes", "on"):
+        return True
+    if raw in ("0", "false", "no", "off"):
+        return False
+    return os.environ.get("APP_ENV", "development") != "production"
+
+
+def _safe_num(value: Any) -> str:
+    try:
+        num = float(value)
+        return str(int(num)) if num.is_integer() else str(round(num, 1))
+    except (TypeError, ValueError):
+        return "unknown"
+
+
+def summarize_nutrition_profile(profile: Any | None) -> str:
+    """Summarize BMI/TDEE/targets from a nutrition profile row or dict."""
+    get = (lambda k: getattr(profile, k, None)) if not isinstance(profile, dict) else profile.get
+    if profile is None:
+        return "Nutrition profile: unknown (no BMI calculated yet)."
+    try:
+        bmi = get("bmi")
+        return (
+            "Nutrition profile: "
+            f"BMI {_safe_num(bmi)}, goal {get('goal') or 'unknown'}, "
+            f"diet {get('diet_type') or 'unknown'}, "
+            f"TDEE {_safe_num(get('tdee_calories'))} kcal/day, "
+            f"protein target {_safe_num(get('target_protein_g'))}g/day."
+        )
+    except Exception:
+        return "Nutrition profile: unknown."
+
+
+def summarize_meal_plan(plan_json: Any | None) -> str:
+    """Compact current meal plan: bucket names + item names + kcal."""
+    if not isinstance(plan_json, dict) or not plan_json:
+        return "Current meal plan: unknown (none saved)."
+    try:
+        bits = []
+        for bucket in ("breakfast", "lunch", "snacks", "dinner"):
+            items = plan_json.get(bucket)
+            if not isinstance(items, list) or not items:
+                continue
+            names = [str(i.get("name", "?"))[:40] for i in items[:6] if isinstance(i, dict)]
+            kcal = sum(float(i.get("calories", 0) or 0) for i in items if isinstance(i, dict))
+            bits.append(f"{bucket}: {', '.join(names)} (~{int(kcal)} kcal)")
+        return "Current meal plan: " + ("; ".join(bits) if bits else "unknown (empty).")
+    except Exception:
+        return "Current meal plan: unknown."
+
+
+def summarize_activities(logs: Any | None) -> str:
+    """Recent workouts: total minutes + types over the last 7 days."""
+    if not isinstance(logs, list) or not logs:
+        return "Recent workouts (7d): unknown (none logged)."
+    try:
+        total = sum(int(l.get("duration_minutes", 0) or 0) for l in logs if isinstance(l, dict))
+        kinds = sorted({str(l.get("activity_type", "?"))[:30] for l in logs if isinstance(l, dict)})
+        return f"Recent workouts (7d): {total} min total ({', '.join(kinds[:5]) or 'mixed'})."
+    except Exception:
+        return "Recent workouts (7d): unknown."
+
+
+def summarize_todos(todos: Any | None) -> str:
+    """Today's open todos by title only (no internals)."""
+    if not isinstance(todos, list) or not todos:
+        return "Today's todos: unknown (none scheduled)."
+    try:
+        titles = [str(t.get("title", "?"))[:50] for t in todos[:8] if isinstance(t, dict)]
+        return f"Today's todos ({len(todos)}): " + "; ".join(titles) + "."
+    except Exception:
+        return "Today's todos: unknown."
+
+
+def summarize_lab_values(values: Any | None) -> str:
+    """Reports privacy rule: analyte + flag + counts only — never numerics.
+
+    The model discusses trends and next steps without restating exact numbers.
+    """
+    if not isinstance(values, list) or not values:
+        return "Lab summary: unknown (no report values on file)."
+    try:
+        rows = [v for v in values if isinstance(v, dict)]
+        if not rows:
+            return "Lab summary: unknown (no report values on file)."
+        flagged = [
+            f"{v.get('analyte_name', '?')} ({v.get('flag', '?')})"
+            for v in rows
+            if str(v.get("flag", "")).lower() not in ("", "within_range", "normal", "none")
+        ][:8]
+        if flagged:
+            return (
+                f"Lab summary: {len(rows)} values on file, "
+                f"{len(flagged)} needing attention: " + "; ".join(str(f)[:60] for f in flagged) + "."
+            )
+        return f"Lab summary: {len(rows)} values on file, all within range."
+    except Exception:
+        return "Lab summary: unknown."
+
+
+def summarize_checkup_catalog(tests: Any | None) -> str:
+    """Body-test catalog entries relevant to the question (knowledge, not user data)."""
+    if not isinstance(tests, list) or not tests:
+        return ""
+    try:
+        bits = []
+        for t in tests[:5]:
+            if not isinstance(t, dict):
+                continue
+            bit = str(t.get("name", "?"))[:60]
+            checks = str(t.get("what_it_checks") or "")[:100].strip()
+            if checks:
+                bit += f" — {checks}"
+            prep = str(t.get("prep_note") or "")[:80].strip()
+            if prep:
+                bit += f" (Prep: {prep})"
+            if t.get("fasting_required"):
+                bit += " [fasting required]"
+            bits.append(bit)
+        return "Possibly relevant tests: " + "; ".join(bits) + "." if bits else ""
+    except Exception:
+        return ""
+
+
+async def _assemble_user_context(
+    db: AsyncSession, *, user_id: uuid.UUID, mode: str, message: str
+) -> tuple[str, list[dict]]:
+    """Load own-data records and render the per-turn USER HEALTH CONTEXT block.
+
+    Each source is isolated in try/except: one failing source never breaks the
+    turn. Returns (context_block, citations). Empty block ("") when the flag
+    is off or nothing is on file.
+    """
+    if not context_assembly_enabled():
+        return "", []
+
+    sections: list[str] = []
+    citations: list[dict] = []
+
+    async def _safe(coro):
+        try:
+            return await coro
+        except Exception:
+            return None
+
+    # Core (every mode): nutrition profile + ai_context is handled by caller.
+    async def _load_nutrition():
+        from app.models.xomni import NutritionProfile as NP
+        return await db.scalar(select(NP).where(NP.user_id == user_id))
+
+    profile = await _safe(_load_nutrition())
+    if profile is not None:
+        sections.append(summarize_nutrition_profile(profile))
+
+    if mode in ("food", "general"):
+        async def _load_plan():
+            from app.models.xomni import MealPlan as MP
+            return await db.scalar(
+                select(MP).where(MP.user_id == user_id).order_by(MP.updated_at.desc())
+            )
+
+        plan = await _safe(_load_plan())
+        if plan is not None and getattr(plan, "plan_json", None):
+            sections.append(summarize_meal_plan(plan.plan_json))
+
+        async def _load_logs():
+            from app.models.xomni import NutritionLog as NL
+            q = select(NL).where(NL.user_id == user_id, NL.logged_date == date.today()).limit(20)
+            return list((await db.execute(q)).scalars().all())
+
+        logs = await _safe(_load_logs()) or []
+        if logs:
+            water = sum(int(l.water_ml or 0) for l in logs)
+            meals = sum(1 for l in logs if (l.entry_type or "") == "meal")
+            sections.append(f"Today so far: {meals} meals logged, {water} ml water.")
+
+        learn_text, learn_cites = await _get_learn_context(db, message)
+        if learn_text:
+            sections.append(learn_text)
+            citations.extend(learn_cites)
+
+    if mode in ("fitness", "general"):
+        async def _load_activities():
+            from datetime import timedelta as _td
+            from app.models.xomni import ActivityLog as AL
+            since = date.today() - _td(days=7)
+            q = select(AL).where(AL.user_id == user_id, AL.logged_date >= since).limit(30)
+            rows = list((await db.execute(q)).scalars().all())
+            return [
+                {"activity_type": r.activity_type, "duration_minutes": r.duration_minutes,
+                 "logged_date": r.logged_date.isoformat() if r.logged_date else ""}
+                for r in rows
+            ]
+
+        acts = await _safe(_load_activities()) or []
+        if acts:
+            sections.append(summarize_activities(acts))
+
+    if mode in ("timetable", "general"):
+        async def _load_todos():
+            from app.models.time import Todo as TD
+            q = select(TD).where(
+                TD.user_id == user_id, TD.due_date == date.today()
+            ).limit(15)
+            rows = list((await db.execute(q)).scalars().all())
+            return [{"title": r.title, "priority": r.priority} for r in rows]
+
+        todos = await _safe(_load_todos()) or []
+        if todos:
+            sections.append(summarize_todos(todos))
+
+    if mode == "reports":
+        async def _load_lab():
+            from app.models.documents import LabReportValue as LV
+            from app.models.family_member import FamilyMember as FM
+            member_ids = select(FM.id).where(FM.user_id == user_id)
+            q = select(LV).where(LV.member_id.in_(member_ids)).limit(60)
+            rows = list((await db.execute(q)).scalars().all())
+            return [
+                {"analyte_name": r.analyte_name, "flag": r.flag, "page": r.page,
+                 "document_id": str(r.document_id)}
+                for r in rows
+            ]
+
+        lab = await _safe(_load_lab()) or []
+        if lab:
+            sections.append(summarize_lab_values(lab))
+            for v in lab[:15]:
+                citations.append({
+                    "source": "lab_value",
+                    "document_id": v.get("document_id", ""),
+                    "page": v.get("page"),
+                    "label": str(v.get("analyte_name", ""))[:80],
+                })
+
+        check_text, check_cites = await _get_checkup_context(db, message)
+        if check_text:
+            sections.append(check_text)
+            citations.extend(check_cites)
+
+    if not sections:
+        return "", []
+
+    header = (
+        "USER HEALTH CONTEXT (own confirmed records — tailor advice to these; "
+        "never restate exact lab numbers, summarize only; 'unknown' means ask, never guess):"
+    )
+    block = header + "\n" + "\n".join(f"- {s}" for s in sections)
+    if len(block) > CONTEXT_BUDGET_CHARS:
+        block = block[:CONTEXT_BUDGET_CHARS] + "\n- (truncated: oldest context dropped)"
+    return block, citations
 
 
 async def chat(
@@ -429,8 +756,21 @@ async def chat(
     # Get conversation history for context
     history = await _get_conversation_history(db, conv.id, limit=6)
 
-    # Get learn context (RAG over food/test DB)
-    learn_context = await _get_learn_context(db, message)
+    # Per-turn user context (own records + catalog RAG). Flag off (or any
+    # assembly failure) falls back to the legacy learn-only context.
+    context_block = ""
+    context_citations: list[dict] = []
+    if context_assembly_enabled():
+        try:
+            context_block, context_citations = await _assemble_user_context(
+                db, user_id=user_id, mode=mode, message=message
+            )
+        except Exception:
+            context_block, context_citations = "", []
+    if not context_block:
+        legacy_learn, legacy_cites = await _get_learn_context(db, message)
+        context_block = legacy_learn
+        context_citations = legacy_cites
 
     # Pick system prompt by mode
     if mode == "food":
@@ -464,7 +804,7 @@ User's nutrition profile:
 
     full_prompt = f"""{system_prompt}
 
-{learn_context}
+{context_block}
 
 {nutrition_text}
 
@@ -510,6 +850,7 @@ XOMNI:"""
         conversation_id=conv.id,
         role="assistant",
         content=answer_text,
+        citations=context_citations or None,
         provider_used=provider_used,
         tokens_used=tokens_used,
     )
@@ -520,7 +861,7 @@ XOMNI:"""
         "answer": answer_text,
         "conversation_id": str(conv.id),
         "message_id": str(ai_msg.id),
-        "citations": [],
+        "citations": context_citations,
         "emergency": False,
         "action": action,
     }

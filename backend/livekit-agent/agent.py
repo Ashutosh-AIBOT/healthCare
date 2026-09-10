@@ -61,9 +61,16 @@ class _GroqChatStream(llm.LLMStream):
             return
         try:
             messages, _ = self._chat_ctx.to_provider_format("openai")
-            async for delta in self._groq.chat_stream(messages, VOICE_SYSTEM_PROMPT):
-                if delta:
-                    await emit(delta)
+            try:
+                async for delta in self._groq.chat_stream(messages, VOICE_SYSTEM_PROMPT):
+                    if delta:
+                        await emit(delta)
+            finally:
+                # Always terminate the turn: if the stream died mid-way after
+                # partial audio, the session still gets a clean end-of-stream
+                # instead of hanging on an unfinished turn.
+                if not first:
+                    await emit(" ")
             if first:
                 # Stream completed without any delta — say so plainly.
                 await emit(
@@ -109,15 +116,17 @@ async def entrypoint(ctx: JobContext):
 
     # Per-user Groq key: participant identity is the app user UUID
     # (set by POST /voice/livekit-token). Never logged.
+    # Distinct states so ops can tell worker misconfig apart from a user
+    # who simply hasn't added a key yet (free-tier debugging).
     database_url = os.environ.get("DATABASE_URL", "")
     secret_key = os.environ.get("SECRET_KEY", "")
     groq_key = None
     if database_url and secret_key:
         groq_key = await load_user_groq_key(database_url, secret_key, participant.identity)
+        if groq_key is None:
+            logger.info("Worker env OK; no Groq key on file for this user (guidance mode).")
     else:
-        logger.warning("DATABASE_URL/SECRET_KEY missing; voice runs in guidance mode.")
-    if groq_key is None:
-        logger.info("No Groq key for participant; voice runs in guidance mode.")
+        logger.warning("DATABASE_URL/SECRET_KEY missing on worker; voice runs in guidance mode.")
 
     # Load past conversation history from user_context.json
     context_file = "user_context.json"
@@ -200,7 +209,9 @@ async def entrypoint(ctx: JobContext):
     except Exception:
         logger.exception("Greeting reply failed")
 
-    async def save_context():
+    async def save_context(reason: str = ""):
+        # reason is provided by the framework on shutdown; logged at debug
+        # only (never message bodies — no PHI in logs).
         # Save updated conversation context to user_context.json.
         # Content items may be plain strings or rich content parts — extract
         # text defensively without logging message bodies (no PHI in logs).

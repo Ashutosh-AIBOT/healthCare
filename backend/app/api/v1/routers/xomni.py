@@ -299,6 +299,10 @@ async def livekit_token(
     The browser LiveKit SDK uses this token to connect to the room,
     capture microphone audio, and stream it for STT processing.
 
+    Token-only: the worker joins via LiveKit's implicit auto-dispatch when
+    the participant joins (same as the reference AgentTalk flow). No explicit
+    dispatch here — dispatching twice creates two agents in one room.
+
     Requires: LIVEKIT_API_KEY + LIVEKIT_API_SECRET in environment.
     """
     room = payload.room_name or f"xomni-{current_user.id}-{payload.conversation_id or uuid.uuid4().hex[:8]}"
@@ -321,24 +325,12 @@ async def livekit_token(
     import os
     livekit_url = os.environ.get("LIVEKIT_URL", "")
 
-    try:
-        dispatch_id = await gateway.dispatch_voice_agent(
-            room_name=room,
-            metadata=metadata,
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except RuntimeError as e:
-        raise HTTPException(status_code=503, detail=str(e))
-
     return {
         "token": token,
         "room_name": room,
         "livekit_url": livekit_url,
         "participant_identity": identity,
         "context": context_val,
-        "agent_dispatched": True,
-        "dispatch_id": dispatch_id,
     }
 
 

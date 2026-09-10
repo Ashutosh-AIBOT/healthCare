@@ -345,52 +345,10 @@ class LLMGateway:
             # livekit-api not installed, return placeholder
             raise ValueError("livekit-api package required. Run: pip install livekit-api")
 
-    async def dispatch_voice_agent(
-        self,
-        *,
-        room_name: str,
-        metadata: str | None = None,
-    ) -> str:
-        """Create an explicit agent dispatch so the worker joins the room.
-
-        Workers running `python agent.py start` (production) do NOT
-        auto-join rooms — without this call the room stays empty and the
-        user hears nothing. Each token call mints a unique room name, so
-        one dispatch per room is safe.
-        Returns the dispatch id. Raises ValueError on misconfiguration,
-        RuntimeError when LiveKit rejects the request.
-        """
-        lk_url = os.environ.get("LIVEKIT_URL", "")
-        lk_api_key = os.environ.get("LIVEKIT_API_KEY", "")
-        lk_api_secret = os.environ.get("LIVEKIT_API_SECRET", "")
-        if not lk_url or not lk_api_key or not lk_api_secret:
-            raise ValueError(
-                "LiveKit credentials not configured. "
-                "Add LIVEKIT_URL, LIVEKIT_API_KEY and LIVEKIT_API_SECRET "
-                "to your environment."
-            )
-        api_url = lk_url.replace("wss://", "https://").replace("ws://", "http://")
-        try:
-            import aiohttp
-            from livekit.api import CreateAgentDispatchRequest
-            from livekit.api.agent_dispatch_service import AgentDispatchService
-        except ImportError:
-            raise ValueError("livekit-api package required. Run: pip install livekit-api")
-        try:
-            async with aiohttp.ClientSession() as http_session:
-                svc = AgentDispatchService(http_session, api_url, lk_api_key, lk_api_secret)
-                dispatch = await svc.create_dispatch(
-                    CreateAgentDispatchRequest(
-                        agent_name="",
-                        room=room_name,
-                        metadata=metadata or "",
-                    )
-                )
-                return dispatch.id
-        except ValueError:
-            raise
-        except Exception as exc:
-            raise RuntimeError(f"Agent dispatch failed: {exc}") from exc
+    # NOTE: no explicit agent dispatch here by design. The worker joins via
+    # LiveKit's implicit auto-dispatch on participant join (reference
+    # AgentTalk flow). Dispatching explicitly as well creates two agents
+    # in one room and doubles inference spend.
 
     # ------------------------------------------------------------------
     # Individual provider callers

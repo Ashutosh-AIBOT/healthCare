@@ -14,6 +14,9 @@ interface VoiceTalkButtonProps {
   onTranscript: (text: string) => void;
   onError: (message: string) => void;
   context?: string;
+  onActiveChange?: (active: boolean) => void;
+  /** Soft cap per call (free-tier inference budget). 0 = no cap. */
+  maxMinutes?: number;
 }
 
 interface TokenResponse {
@@ -142,18 +145,28 @@ function VoiceRoomEvents({
   return null;
 }
 
-export function VoiceTalkButton({ onTranscript, onError, context = "general" }: VoiceTalkButtonProps) {
+export function VoiceTalkButton({ onTranscript, onError, context = "general", onActiveChange, maxMinutes = 10 }: VoiceTalkButtonProps) {
   const [status, setStatus] = useState<VoiceRoomStatus>("idle");
   const [token, setToken] = useState<string | null>(null);
   const [serverUrl, setServerUrl] = useState<string | null>(null);
   const startingRef = useRef(false);
+  const capTimerRef = useRef<number | null>(null);
+
+  const clearCapTimer = useCallback(() => {
+    if (capTimerRef.current !== null) {
+      window.clearTimeout(capTimerRef.current);
+      capTimerRef.current = null;
+    }
+  }, []);
 
   const leave = useCallback(() => {
+    clearCapTimer();
     setToken(null);
     setServerUrl(null);
     setStatus("idle");
     startingRef.current = false;
-  }, []);
+    onActiveChange?.(false);
+  }, [clearCapTimer, onActiveChange]);
 
   const start = useCallback(async () => {
     if (startingRef.current || status !== "idle") return;
@@ -184,7 +197,17 @@ export function VoiceTalkButton({ onTranscript, onError, context = "general" }: 
     setToken(data.token);
     setServerUrl(data.livekit_url);
     setStatus("listening");
-  }, [context, onError, status]);
+    onActiveChange?.(true);
+    // Free-tier guard: end the call at the cap so one session cannot burn
+    // the monthly inference budget. 0 disables.
+    clearCapTimer();
+    if (maxMinutes > 0) {
+      capTimerRef.current = window.setTimeout(() => {
+        onError("Voice session ended at the 10-minute free-tier limit. Rejoin to continue.");
+        leave();
+      }, maxMinutes * 60 * 1000);
+    }
+  }, [context, onActiveChange, onError, status, maxMinutes, clearCapTimer, leave]);
 
   const toggle = useCallback(() => {
     if (status === "idle") {
@@ -195,6 +218,8 @@ export function VoiceTalkButton({ onTranscript, onError, context = "general" }: 
   }, [status, start, leave]);
 
   const active = status !== "idle";
+
+  useEffect(() => clearCapTimer, [clearCapTimer]);
 
   return (
     <>

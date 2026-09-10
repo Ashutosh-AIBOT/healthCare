@@ -21,6 +21,12 @@ import { Radio } from "lucide-react";
 
 type Role = "user" | "assistant";
 
+interface Citation {
+  source: string;
+  label: string;
+  page?: number | null;
+}
+
 interface Message {
   id: string;
   role: Role;
@@ -28,7 +34,7 @@ interface Message {
   createdAt: Date;
   streaming?: boolean;
   action?: any;
-  citations?: Array<{ source: string; label: string; page?: number }>;
+  citations?: Citation[];
 }
 
 interface Conversation {
@@ -254,6 +260,22 @@ export default function XomniPage() {
                         m.id === assistantId ? { ...m, action: payload.action } : m
                       )
                     );
+                  }
+                  if (Array.isArray(payload.citations) && payload.citations.length) {
+                    const cites: Citation[] = payload.citations
+                      .filter((c: any) => c && typeof c.label === "string")
+                      .map((c: any) => ({
+                        source: String(c.source ?? "record"),
+                        label: String(c.label).slice(0, 80),
+                        page: typeof c.page === "number" ? c.page : null,
+                      }));
+                    if (cites.length) {
+                      setMessages((prev) =>
+                        prev.map((m) =>
+                          m.id === assistantId ? { ...m, citations: cites } : m
+                        )
+                      );
+                    }
                   }
                   if (payload.conversation_id && payload.conversation_id !== activeConvId) {
                     setActiveConvId(payload.conversation_id);
@@ -623,6 +645,24 @@ export default function XomniPage() {
                           ) : (
                             <p className="whitespace-pre-wrap">{message.content}</p>
                           )}
+                          {message.role === "assistant" &&
+                            !message.streaming &&
+                            message.citations &&
+                            message.citations.length > 0 && (
+                              <div className="flex flex-wrap gap-1.5 mt-2 pl-1" aria-label="Sources">
+                                {message.citations.slice(0, 8).map((cite, i) => (
+                                  <span
+                                    key={`${cite.source}-${i}`}
+                                    title={`${cite.source}${cite.page ? ` · page ${cite.page}` : ""}`}
+                                    className="inline-flex items-center gap-1 rounded-full border border-line/60 bg-mist/40 px-2.5 py-1 text-[11px] font-medium text-muted"
+                                  >
+                                    <Link2 className="h-3 w-3" />
+                                    {cite.label}
+                                    {cite.page ? ` · p${cite.page}` : ""}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
                           {message.action && message.role === "assistant" && !message.streaming && (
                             <ProposalCard
                               action={message.action}

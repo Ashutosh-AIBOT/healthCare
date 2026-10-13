@@ -125,10 +125,40 @@ class TimeService:
         return list(res.scalars().all())
 
     async def create_todo(self, db: AsyncSession, family_id: uuid.UUID, user_id: uuid.UUID, payload: dict) -> Todo:
-        todo = Todo(family_id=family_id, user_id=user_id, **payload)
-        db.add(todo)
+        start = payload.get("start_minute")
+        end = payload.get("end_minute")
+        if (start is None) != (end is None) or (start is not None and end <= start):
+            raise AppError(code="VALIDATION_FAILED", status=422, detail="todo end must be after start")
+        rule = payload.get("recurrence_rule", "once")
+        until = payload.get("recurrence_until")
+        if rule != "once" and until is None:
+            until = payload["due_date"] + timedelta(days=30)
+        if until is not None and until < payload["due_date"]:
+            raise AppError(code="VALIDATION_FAILED", status=422, detail="recurrence_until must be on or after due_date")
+        recurrence_days = payload.get("recurrence_days", [])
+        if rule == "weekly" and not recurrence_days:
+            recurrence_days = [(payload["due_date"].weekday() + 1) % 7]
+        payload = {**payload, "recurrence_until": until, "recurrence_days": recurrence_days}
+        dates = [payload["due_date"]]
+        if rule != "once":
+            end_date = min(until, payload["due_date"] + timedelta(days=365))
+            dates = []
+            cursor = payload["due_date"]
+            while cursor <= end_date:
+                weekday = (cursor.weekday() + 1) % 7
+                matches = rule == "daily" or (rule == "weekdays" and cursor.weekday() < 5) or (rule == "weekly" and weekday in recurrence_days)
+                if matches:
+                    dates.append(cursor)
+                cursor += timedelta(days=1)
+        series_id = uuid.uuid4() if len(dates) > 1 else None
+        first: Todo | None = None
+        for due_date in dates:
+            row_payload = {**payload, "due_date": due_date, "series_id": series_id}
+            todo = Todo(family_id=family_id, user_id=user_id, **row_payload)
+            db.add(todo)
+            first = first or todo
         await db.flush()
-        return todo
+        return first
 
     async def update_todo(self, db: AsyncSession, family_id: uuid.UUID, user_id: uuid.UUID, todo_id: uuid.UUID, payload: dict) -> Todo:
         res = await db.execute(select(Todo).where(Todo.id == todo_id, Todo.family_id == family_id, Todo.user_id == user_id))
@@ -136,8 +166,9 @@ class TimeService:
         if not todo:
             raise AppError(code="NOT_FOUND", status=404, detail="Todo not found")
         for k, v in payload.items():
-            if v is not None:
-                setattr(todo, k, v)
+            setattr(todo, k, v)
+        if (todo.start_minute is None) != (todo.end_minute is None) or (todo.start_minute is not None and todo.end_minute <= todo.start_minute):
+            raise AppError(code="VALIDATION_FAILED", status=422, detail="todo end must be after start")
         await db.flush()
         return todo
 
@@ -252,7 +283,7 @@ class TimeService:
         timetables = await self.list_timetables(db, family_id, user_id)
         tt = next((x for x in timetables if x.kind == kind), timetables[0] if timetables else None)
         if not tt:
-            return {"date": d.isoformat(), "kind": kind, "blocks": []}
+            return {"date": d.isoformat(), "kind": kind, "blocks": [], "todos": []}
 
         now = datetime.now(UTC)
         today = now.date()
@@ -278,12 +309,25 @@ class TimeService:
                 "needs_checkin": is_current and not status,
             })
 
+        todo_rows = await self.list_todos(db, family_id, user_id, due_date=d)
+        todos = [{
+            "id": str(todo.id),
+            "title": todo.title,
+            "description": todo.description,
+            "start_minute": todo.start_minute,
+            "end_minute": todo.end_minute,
+            "status": todo.status,
+            "priority": todo.priority,
+            "recurrence_rule": todo.recurrence_rule,
+        } for todo in todo_rows]
+
         return {
             "date": d.isoformat(),
             "kind": kind,
             "timetable_name": tt.name,
             "current_minute": current_minute,
             "blocks": blocks,
+            "todos": todos,
         }
 
     async def log_checkin(self, db: AsyncSession, family_id: uuid.UUID, user_id: uuid.UUID, d: date, block_id: uuid.UUID, actual_title: str, matched: bool, duration_minutes: int) -> TimeEntry:

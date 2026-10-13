@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -76,8 +76,8 @@ You are Xomni with timetable, schedule, and todo management capabilities.
 Guidelines:
 1. When users ask you to schedule or add tasks (e.g., "Add cardio at 5pm", "Add grocery shopping tomorrow"):
    - NEVER silently add it. Ask for permission first: "Shall I add this to your schedule?"
-   - Respond with a JSON action block:
-     {"action": "propose_todo", "title": "Evening Cardio", "start_hour": 17, "end_hour": 18, "priority": "important", "created_by": "XOMNI"}
+   - Respond with a JSON action block. Include recurrence_rule (once, daily, weekdays, or weekly) only when requested, and recurrence_until/recurrence_days when needed:
+     {"action": "propose_todo", "title": "Evening Cardio", "start_hour": 17, "end_hour": 18, "priority": "important", "recurrence_rule": "once", "created_by": "XOMNI"}
 2. When users ask to complete or check off a task:
    - Respond with: {"action": "complete_block", "title": "...", "start_hour": 10}
 3. When users ask about their 3 timetable templates (Productive Day, Backup Day, Holiday Day):
@@ -94,7 +94,12 @@ def _get_mode_system_prompt(mode: str) -> str:
     elif mode == "timetable":
         return TIMETABLE_SYSTEM_PROMPT
     elif mode == "fitness":
-        return GENERAL_SYSTEM_PROMPT + "\n\nFocus on fitness, exercise, and sport nutrition topics."
+        return GENERAL_SYSTEM_PROMPT + """
+
+Focus on fitness, exercise, and sport nutrition topics. When the user asks to add a workout to their activity log, ask for confirmation and emit:
+{"action": "propose_fitness_activity", "activity_type": "walking", "duration_minutes": 30, "calories_burned": 120, "logged_date": "2026-09-09", "notes": "Easy recovery walk"}
+Never log an activity until the user confirms.
+"""
     elif mode == "reports":
         return GENERAL_SYSTEM_PROMPT + "\n\nFocus on interpreting lab report values and health metrics."
     else:
@@ -161,6 +166,169 @@ async def list_messages(
         .limit(limit)
     )
     return list((await db.execute(q)).scalars().all())
+
+
+def _extract_action(answer_text: str) -> tuple[str, dict | None]:
+    """Extract the first valid action object, including nested meal proposals."""
+    import json as _json
+
+    decoder = _json.JSONDecoder()
+    cursor = 0
+    while True:
+        start = answer_text.find("{", cursor)
+        if start < 0:
+            return answer_text, None
+        try:
+            candidate, end = decoder.raw_decode(answer_text[start:])
+        except _json.JSONDecodeError:
+            cursor = start + 1
+            continue
+        if isinstance(candidate, dict) and candidate.get("action"):
+            clean = (answer_text[:start] + answer_text[start + end:]).strip()
+            return clean, candidate
+        cursor = start + 1
+
+
+async def apply_pending_action(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    family_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+) -> dict[str, Any]:
+    """Apply a previously proposed action after an explicit user confirmation."""
+    from app.models.time import TimeBlock, TimeTimetable, Todo
+    from app.services.time_service import time_service
+
+    conv = await db.scalar(select(XomniConversation).where(
+        XomniConversation.id == conversation_id,
+        XomniConversation.user_id == user_id,
+    ))
+    if not conv or not conv.pending_action:
+        raise ValueError("There is no pending Xomni action to confirm.")
+    if conv.pending_action_expires_at and conv.pending_action_expires_at < datetime.now(UTC):
+        conv.pending_action = None
+        conv.pending_action_expires_at = None
+        await db.flush()
+        raise ValueError("That proposal has expired. Please ask Xomni again.")
+
+    action = conv.pending_action.get("action") if isinstance(conv.pending_action, dict) else None
+    if not isinstance(action, dict):
+        raise ValueError("The pending Xomni action is invalid.")
+
+    action_name = action.get("action")
+    result: dict[str, Any] = {"action": action_name, "affected": []}
+    if action_name == "propose_todo":
+        title = str(action.get("title") or "").strip()
+        if not title:
+            raise ValueError("The proposed task has no title.")
+        await time_service.ensure_defaults(db, family_id, user_id)
+        tt = await db.scalar(select(TimeTimetable).where(
+            TimeTimetable.family_id == family_id,
+            TimeTimetable.user_id == user_id,
+            TimeTimetable.kind == "productive",
+        ))
+        block_id = None
+        start_hour = action.get("start_hour")
+        end_hour = action.get("end_hour")
+        if isinstance(start_hour, int) and isinstance(end_hour, int) and 0 <= start_hour < end_hour <= 24 and tt:
+            block = TimeBlock(
+                timetable_id=tt.id,
+                title=title,
+                start_minute=start_hour * 60,
+                end_minute=end_hour * 60,
+                priority=action.get("priority") if action.get("priority") in {"normal", "important", "less"} else "normal",
+                description="Created by Xomni after user confirmation.",
+            )
+            db.add(block)
+            await db.flush()
+            block_id = block.id
+        due_date = action.get("due_date")
+        try:
+            due = date.fromisoformat(due_date) if isinstance(due_date, str) else date.today()
+        except ValueError:
+            due = date.today()
+        start_minute = action.get("start_hour") * 60 if isinstance(action.get("start_hour"), int) else None
+        end_minute = action.get("end_hour") * 60 if isinstance(action.get("end_hour"), int) else None
+        recurrence_rule = action.get("recurrence_rule") if action.get("recurrence_rule") in {"once", "daily", "weekdays", "weekly"} else "once"
+        recurrence_until = None
+        if isinstance(action.get("recurrence_until"), str):
+            try:
+                recurrence_until = date.fromisoformat(action["recurrence_until"])
+            except ValueError:
+                recurrence_until = None
+        todo = await time_service.create_todo(db, family_id, user_id, {
+            "title": title,
+            "description": action.get("description"),
+            "due_date": due,
+            "priority": action.get("priority") if action.get("priority") in {"normal", "important", "less"} else "normal",
+            "created_by": "XOMNI",
+            "timetable_block_id": block_id,
+            "start_minute": start_minute,
+            "end_minute": end_minute,
+            "recurrence_rule": recurrence_rule,
+            "recurrence_until": recurrence_until,
+            "recurrence_days": action.get("recurrence_days") if isinstance(action.get("recurrence_days"), list) else [],
+        })
+        result["affected"].append({"type": "todo", "id": str(todo.id), "due_date": due.isoformat()})
+        if block_id:
+            result["affected"].append({"type": "time_block", "id": str(block_id)})
+    elif action_name == "propose_meal_plan":
+        from app.models.xomni import MealPlan
+
+        plan = await db.scalar(select(MealPlan).where(MealPlan.user_id == user_id).order_by(MealPlan.updated_at.desc()))
+        current = dict(plan.plan_json or {}) if plan else {}
+        meal_type = str(action.get("meal_type") or "lunch")
+        if meal_type not in {"breakfast", "lunch", "snacks", "dinner"}:
+            meal_type = "lunch"
+        proposal = action.get("proposal")
+        items = proposal if isinstance(proposal, list) else [proposal]
+        items = [item for item in items if isinstance(item, dict) and item.get("name")]
+        if not items:
+            raise ValueError("The proposed meal plan has no meal items.")
+        current[meal_type] = items
+        if plan:
+            plan.plan_json = current
+            plan.created_by = "XOMNI"
+            plan.ai_generated = True
+            plan.version += 1
+        else:
+            plan = MealPlan(user_id=user_id, plan_json=current, created_by="XOMNI", ai_generated=True, version=1)
+            db.add(plan)
+        await db.flush()
+        result["affected"].append({"type": "meal_plan", "id": str(plan.id), "meal_type": meal_type})
+    elif action_name == "propose_fitness_activity":
+        from app.models.xomni import ActivityLog
+
+        activity_type = str(action.get("activity_type") or "other").strip()[:80]
+        duration = action.get("duration_minutes")
+        if not activity_type or not isinstance(duration, int) or duration <= 0 or duration >= 1440:
+            raise ValueError("The proposed fitness activity is invalid.")
+        logged_date = date.today()
+        if isinstance(action.get("logged_date"), str):
+            try:
+                logged_date = date.fromisoformat(action["logged_date"])
+            except ValueError:
+                pass
+        activity = ActivityLog(
+            user_id=user_id,
+            activity_type=activity_type,
+            duration_minutes=duration,
+            calories_burned=action.get("calories_burned") if isinstance(action.get("calories_burned"), int) else None,
+            distance_km=action.get("distance_km") if isinstance(action.get("distance_km"), (int, float)) else None,
+            notes=action.get("notes"),
+            logged_date=logged_date,
+        )
+        db.add(activity)
+        await db.flush()
+        result["affected"].append({"type": "fitness_activity", "id": str(activity.id), "logged_date": logged_date.isoformat()})
+    else:
+        raise ValueError("This Xomni action cannot be confirmed yet.")
+
+    conv.pending_action = None
+    conv.pending_action_expires_at = None
+    await db.flush()
+    return result
 
 
 async def _get_learn_context(db: AsyncSession, question: str) -> str:
@@ -312,7 +480,7 @@ XOMNI:"""
     try:
         llm_result = await gateway.complete(
             prompt=full_prompt,
-            model="nvidia/nemotron-3.5-lightning-30b-a3b",
+            model=None,
         )
         answer_text = llm_result.text
         provider_used = str(llm_result.provider) if llm_result.provider else "mock"
@@ -325,19 +493,13 @@ XOMNI:"""
     # Apply guardrails
     answer_text = guardrails.apply_guardrails(answer_text)
 
-    # Detect timetable/food actions
+    # Detect and persist actions so confirmation is server-owned and resumable.
     action = None
     if mode in ["timetable", "food", "general"]:
-        import json as _json
-        import re
-        json_match = re.search(r'\{[^{}]*"action"[^{}]*\}', answer_text)
-        if json_match:
-            try:
-                action = _json.loads(json_match.group())
-                # optionally, we could strip the JSON from answer_text here so the user just sees text + the card
-                answer_text = answer_text.replace(json_match.group(), "").strip()
-            except Exception:
-                pass
+        answer_text, action = _extract_action(answer_text)
+        if action:
+            conv.pending_action = {"action": action}
+            conv.pending_action_expires_at = datetime.now(UTC) + timedelta(minutes=15)
 
     # Update conversation title from first user message
     if conv.title == "New Chat":

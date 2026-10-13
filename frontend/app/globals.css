@@ -11,22 +11,36 @@
   color-scheme: light;
 
   /* Neutral Ramp */
-  --color-bg: #FAF7F1;
+  --color-bg: #F6F8FA;
   --color-surface: #FFFFFF;
-  --color-surface-hover: #EBEDF0;
-  --color-border: #E7E1D6;
-  --color-text-primary: #22262B;
-  --color-text-secondary: #6B7280;
+  --color-surface-hover: #EEF2F4;
+  --color-border: #D9E1E6;
+  --color-text-primary: #17232B;
+  --color-text-secondary: #5F6D76;
 
   /* Semantic Accents */
-  --color-accent-gold: #C9862B;
-  --color-accent-teal: #2C8F87;
-  --color-accent-water: #3E7FBF;
-  --color-success: #3F9C5F;
-  --color-danger: #C24E3F;
+  --color-accent-gold: #176B67;
+  --color-accent-teal: #176B67;
+  --color-accent-water: #356B8C;
+  --color-success: #2F7D59;
+  --color-danger: #B34B4B;
+  --color-primary-soft: #DCEDEA;
+  --color-healthy: #2F7D59;
+  --color-healthy-excellent: #2F7D59;
+  --color-healthy-good: #4D8A73;
+  --color-apricot: #8A6B3D;
+  --color-lime: #E4EEEA;
+  --color-lime-ink: #244C43;
+  --color-blush: #F1E8E5;
+  --color-ink: #17232B;
+  --color-line: #D9E1E6;
+  --color-mist: #EEF2F4;
+  --color-foam: #F6F8FA;
+  --color-charcoal: #203039;
+  --color-charcoal-foreground: #EDF3F4;
 
   /* typography */
-  --font-display: "Newsreader", "Fraunces", Georgia, serif;
+  --font-display: "Inter", "General Sans", system-ui, sans-serif;
   --font-sans: "Inter", "General Sans", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
@@ -37,10 +51,10 @@
   --radius-full: 999px;
 
   /* shadows */
-  --shadow-ambient: 0 8px 24px rgba(0,0,0,0.08);
-  --shadow-lift: 0 8px 24px rgba(0,0,0,0.12);
+  --shadow-ambient: 0 8px 24px rgba(23,35,43,0.06);
+  --shadow-lift: 0 10px 24px rgba(23,35,43,0.10);
   --shadow-hairline: 0 0 0 1px var(--color-border);
-  --shadow-card: 0 12px 40px -16px rgba(0,0,0,0.05), 0 2px 6px -2px rgba(0,0,0,0.02);
+  --shadow-card: 0 8px 24px -16px rgba(23,35,43,0.18);
 
   /* grain */
   --grain: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");
@@ -52,19 +66,33 @@
   color-scheme: dark;
 
   /* Neutral Ramp */
-  --color-bg: #0E1116;
-  --color-surface: #171B22;
-  --color-surface-hover: #1F242D;
-  --color-border: #262B34;
-  --color-text-primary: #EDEFF2;
-  --color-text-secondary: #8D96A3;
+  --color-bg: #10181D;
+  --color-surface: #172228;
+  --color-surface-hover: #203039;
+  --color-border: #2B3A42;
+  --color-text-primary: #EDF3F4;
+  --color-text-secondary: #A0B0B5;
 
   /* Semantic Accents */
-  --color-accent-gold: #E8A93A;
-  --color-accent-teal: #3FA8A0;
-  --color-accent-water: #5B9BD9;
+  --color-accent-gold: #65B5AC;
+  --color-accent-teal: #65B5AC;
+  --color-accent-water: #79AFCB;
   --color-success: #6FCF97;
   --color-danger: #E2685A;
+  --color-primary-soft: #244B4A;
+  --color-healthy: #6FCF97;
+  --color-healthy-excellent: #6FCF97;
+  --color-healthy-good: #79B69A;
+  --color-apricot: #C2A36A;
+  --color-lime: #263A38;
+  --color-lime-ink: #DCEDEA;
+  --color-blush: #3A3030;
+  --color-ink: #EDF3F4;
+  --color-line: #2B3A42;
+  --color-mist: #203039;
+  --color-foam: #10181D;
+  --color-charcoal: #24343A;
+  --color-charcoal-foreground: #EDF3F4;
 
   /* No generic shadows on dark mode per rules, rely on 1px borders */
   --shadow-ambient: none;
@@ -93,11 +121,11 @@
   }
 
   ::selection {
-    background: oklch(0.86 0.19 130 / 0.45);
+    background: color-mix(in srgb, var(--color-accent-teal) 24%, transparent);
   }
 
   .dark ::selection {
-    background: oklch(0.82 0.18 128 / 0.35);
+    background: color-mix(in srgb, var(--color-accent-teal) 32%, transparent);
   }
 
   :focus-visible {

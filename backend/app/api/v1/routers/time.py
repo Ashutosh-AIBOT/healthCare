@@ -94,7 +94,7 @@ async def create_todo(payload: TodoIn, db: Annotated[AsyncSession, Depends(get_d
 async def patch_todo(todo_id: uuid.UUID, payload: TodoPatch, db: Annotated[AsyncSession, Depends(get_db)], current_user: Annotated[User, Depends(get_current_user)]):
     fam, uid = _ctx(current_user)
     await set_tenant_context(db, fam)
-    return await time_service.update_todo(db, fam, uid, todo_id, payload.model_dump(exclude_none=True))
+    return await time_service.update_todo(db, fam, uid, todo_id, payload.model_dump(exclude_unset=True))
 
 
 @router.delete("/todos/{todo_id}", status_code=204)

@@ -34,6 +34,14 @@ class LearnItemOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class LearnItemPage(BaseModel):
+    items: list[LearnItemOut]
+    page: int
+    page_size: int
+    total: int
+    has_next: bool
+
+
 class TestBodyPartOut(BaseModel):
     id: uuid.UUID
     slug: str
@@ -54,6 +62,14 @@ class BodyTestOut(BaseModel):
     sort_order: int
 
     model_config = {"from_attributes": True}
+
+
+class BodyTestPage(BaseModel):
+    items: list[BodyTestOut]
+    page: int
+    page_size: int
+    total: int
+    has_next: bool
 
 
 class LearnSearchResult(BaseModel):

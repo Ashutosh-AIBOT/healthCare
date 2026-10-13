@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError
@@ -21,12 +21,14 @@ class LearnService:
         res = await db.execute(q)
         return list(res.scalars().all())
 
-    async def list_items(self, db: AsyncSession, category_slug: str) -> list[LearnItem]:
+    async def list_items(self, db: AsyncSession, category_slug: str, page: int = 1, page_size: int = 12) -> dict:
         cat = await db.scalar(select(LearnCategory).where(LearnCategory.slug == category_slug))
         if not cat:
             raise AppError(code="NOT_FOUND", status=404, detail="Category not found")
-        res = await db.execute(select(LearnItem).where(LearnItem.category_id == cat.id).order_by(LearnItem.sort_order))
-        return list(res.scalars().all())
+        base = select(LearnItem).where(LearnItem.category_id == cat.id)
+        total = int((await db.scalar(select(func.count()).select_from(base.subquery()))) or 0)
+        res = await db.execute(base.order_by(LearnItem.sort_order, LearnItem.title).offset((page - 1) * page_size).limit(page_size))
+        return {"items": list(res.scalars().all()), "page": page, "page_size": page_size, "total": total, "has_next": page * page_size < total}
 
     async def get_item(self, db: AsyncSession, slug: str) -> LearnItem:
         item = await db.scalar(select(LearnItem).where(LearnItem.slug == slug))
@@ -38,19 +40,22 @@ class LearnService:
         res = await db.execute(select(TestBodyPart).order_by(TestBodyPart.order_index))
         return list(res.scalars().all())
 
-    async def list_tests(self, db: AsyncSession, body_part_slug: str) -> list[BodyTest]:
+    async def list_tests(self, db: AsyncSession, body_part_slug: str, page: int = 1, page_size: int = 12) -> dict:
         part = await db.scalar(select(TestBodyPart).where(TestBodyPart.slug == body_part_slug))
         if not part:
             raise AppError(code="NOT_FOUND", status=404, detail="Body part not found")
-        res = await db.execute(select(BodyTest).where(BodyTest.body_part_id == part.id).order_by(BodyTest.sort_order))
-        return list(res.scalars().all())
+        base = select(BodyTest).where(BodyTest.body_part_id == part.id)
+        total = int((await db.scalar(select(func.count()).select_from(base.subquery()))) or 0)
+        res = await db.execute(base.order_by(BodyTest.sort_order, BodyTest.name).offset((page - 1) * page_size).limit(page_size))
+        return {"items": list(res.scalars().all()), "page": page, "page_size": page_size, "total": total, "has_next": page * page_size < total}
 
-    async def list_tests_by_fasting(self, db: AsyncSession, fasting: bool | None = None) -> list[BodyTest]:
-        q = select(BodyTest).order_by(BodyTest.fasting_required.desc(), BodyTest.sort_order)
+    async def list_tests_by_fasting(self, db: AsyncSession, fasting: bool | None = None, page: int = 1, page_size: int = 12) -> dict:
+        q = select(BodyTest)
         if fasting is not None:
-            q = select(BodyTest).where(BodyTest.fasting_required == fasting).order_by(BodyTest.sort_order)
-        res = await db.execute(q)
-        return list(res.scalars().all())
+            q = q.where(BodyTest.fasting_required == fasting)
+        total = int((await db.scalar(select(func.count()).select_from(q.subquery()))) or 0)
+        res = await db.execute(q.order_by(BodyTest.fasting_required.desc(), BodyTest.sort_order, BodyTest.name).offset((page - 1) * page_size).limit(page_size))
+        return {"items": list(res.scalars().all()), "page": page, "page_size": page_size, "total": total, "has_next": page * page_size < total}
 
     async def search(self, db: AsyncSession, query: str) -> dict:
         q = query.strip().lower()

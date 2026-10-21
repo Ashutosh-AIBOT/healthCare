@@ -39,7 +39,7 @@ type ActivitiesResponse = {
   total_minutes: number;
   total_calories: number;
   workout_count: number;
-  daily_chart: Array<{ day: string; minutes: number; date: string }>;
+  week_chart: Array<{ day: string; minutes: number; date: string }>;
   activities: ActivityLogItem[];
 };
 
@@ -132,7 +132,7 @@ export default function FitnessPage() {
     );
   }
 
-  const chart = activitiesData?.daily_chart || [
+  const chart = activitiesData?.week_chart || [
     { day: "Mon", minutes: 0 },
     { day: "Tue", minutes: 0 },
     { day: "Wed", minutes: 0 },

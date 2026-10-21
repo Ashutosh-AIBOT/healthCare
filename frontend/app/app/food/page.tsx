@@ -72,6 +72,7 @@ export default function FoodPage() {
 
   // Manual Add/Edit modal state
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null);
   const [editMealType, setEditMealType] = useState<"breakfast" | "lunch" | "snacks" | "dinner">("breakfast");
   const [editItemName, setEditItemName] = useState("");
   const [editCalories, setEditCalories] = useState(250);
@@ -79,6 +80,14 @@ export default function FoodPage() {
   const [editCarbs, setEditCarbs] = useState(30);
   const [editFats, setEditFats] = useState(7);
   const [saving, setSaving] = useState(false);
+
+  const handleLogWater = async () => {
+    const res = await apiClient("/api/v1/nutrition/logs", {
+      method: "POST",
+      body: JSON.stringify({ entry_type: "water", water_ml: 250 }),
+    });
+    if (!res.error) void loadData();
+  };
 
   const loadData = useCallback(async () => {
     setError(null);
@@ -117,14 +126,16 @@ export default function FoodPage() {
     const updatedPlan = { ...mealPlan.plan_json };
     const currentList = updatedPlan[editMealType] ? [...updatedPlan[editMealType]] : [];
     
-    currentList.push({
+    const nextItem = {
       name: editItemName.trim(),
       calories: Number(editCalories),
       protein: Number(editProtein),
       carbs: Number(editCarbs),
       fats: Number(editFats),
       created_by: "USER",
-    });
+    };
+    if (editingItemIndex === null) currentList.push(nextItem);
+    else currentList[editingItemIndex] = nextItem;
 
     updatedPlan[editMealType] = currentList;
 
@@ -140,9 +151,29 @@ export default function FoodPage() {
     setSaving(false);
     if (!res.error) {
       setIsEditOpen(false);
+      setEditingItemIndex(null);
       setEditItemName("");
       void loadData();
     }
+  };
+
+  const editMealItem = (mealType: typeof editMealType, item: MealItem, index: number) => {
+    setEditMealType(mealType);
+    setEditingItemIndex(index);
+    setEditItemName(item.name);
+    setEditCalories(item.calories);
+    setEditProtein(item.protein);
+    setEditCarbs(item.carbs);
+    setEditFats(item.fats);
+    setIsEditOpen(true);
+  };
+
+  const deleteMealItem = async (mealType: typeof editMealType, index: number) => {
+    if (!mealPlan) return;
+    const updatedPlan = { ...mealPlan.plan_json };
+    updatedPlan[mealType] = [...(updatedPlan[mealType] || [])].filter((_, itemIndex) => itemIndex !== index);
+    const res = await apiClient("/api/v1/nutrition/meal-plan/save", { method: "POST", body: JSON.stringify({ plan_json: updatedPlan, created_by: "USER", notes: `Removed item from ${mealType}` }) });
+    if (!res.error) void loadData();
   };
 
   if (loading) {
@@ -159,21 +190,21 @@ export default function FoodPage() {
     );
   }
 
-  const targetCal = summary?.target_calories || 2150;
-  const curCal = summary?.calories || 1640;
-  const calPct = Math.min(100, Math.round((curCal / targetCal) * 100));
+  const targetCal = summary?.target_calories || 0;
+  const curCal = summary?.calories || 0;
+  const calPct = targetCal > 0 ? Math.min(100, Math.round((curCal / targetCal) * 100)) : 0;
 
-  const targetPro = summary?.target_protein_g || 120;
-  const curPro = summary?.protein_g || 94;
-  const proPct = Math.min(100, Math.round((curPro / targetPro) * 100));
+  const targetPro = summary?.target_protein_g || 0;
+  const curPro = summary?.protein_g || 0;
+  const proPct = targetPro > 0 ? Math.min(100, Math.round((curPro / targetPro) * 100)) : 0;
 
-  const targetCarb = summary?.target_carbs_g || 240;
-  const curCarb = summary?.carbs_g || 185;
-  const carbPct = Math.min(100, Math.round((curCarb / targetCarb) * 100));
+  const targetCarb = summary?.target_carbs_g || 0;
+  const curCarb = summary?.carbs_g || 0;
+  const carbPct = targetCarb > 0 ? Math.min(100, Math.round((curCarb / targetCarb) * 100)) : 0;
 
-  const targetFat = summary?.target_fat_g || 65;
-  const curFat = summary?.fat_g || 48;
-  const fatPct = Math.min(100, Math.round((curFat / targetFat) * 100));
+  const targetFat = summary?.target_fat_g || 0;
+  const curFat = summary?.fat_g || 0;
+  const fatPct = targetFat > 0 ? Math.min(100, Math.round((curFat / targetFat) * 100)) : 0;
 
   const meals = mealPlan?.plan_json || {};
 
@@ -304,6 +335,16 @@ export default function FoodPage() {
         </div>
       </div>
 
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-accent-water/20 bg-accent-water/5 p-4">
+        <div>
+          <p className="text-sm font-semibold text-text-primary">Water today: {summary?.water_ml ?? 0} ml</p>
+          <p className="text-xs text-text-secondary">Log a 250 ml serving or manage entries from your daily record.</p>
+        </div>
+        <button onClick={() => void handleLogWater()} className="inline-flex items-center gap-2 rounded-full bg-accent-water px-4 py-2 text-xs font-semibold text-white hover:opacity-90">
+          + 250 ml water
+        </button>
+      </div>
+
       {/* History Drawer / Panel (if toggled) */}
       {showHistory && (
         <div className="rounded-[1.75rem] border border-primary/20 bg-primary-soft/20 p-6 space-y-4">
@@ -362,6 +403,8 @@ export default function FoodPage() {
                 <button
                   onClick={() => {
                     setEditMealType(mealKey);
+                    setEditingItemIndex(null);
+                    setEditItemName("");
                     setIsEditOpen(true);
                   }}
                   className="inline-flex items-center gap-1 rounded-full border border-line bg-mist/40 px-3 py-1 text-xs font-semibold text-ink hover:bg-mist transition"
@@ -376,6 +419,8 @@ export default function FoodPage() {
                   className="rounded-xl border border-dashed border-border p-6 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-surface-hover transition-colors duration-200"
                   onClick={() => {
                     setEditMealType(mealKey);
+                    setEditingItemIndex(null);
+                    setEditItemName("");
                     setIsEditOpen(true);
                   }}
                 >
@@ -408,13 +453,7 @@ export default function FoodPage() {
                         </p>
                       </div>
 
-                      <Link
-                        href={`/app/xomni?mode=food&prompt=Suggest a healthier swap for ${item.name} in my ${mealKey}`}
-                        className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-mist hover:text-primary transition"
-                        title="Swap with Xomni"
-                      >
-                        <ArrowRightLeft className="h-3.5 w-3.5" />
-                      </Link>
+                      <div className="flex items-center gap-1"><button onClick={() => editMealItem(mealKey, item, idx)} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-mist hover:text-ink transition" title="Edit meal item"><Edit3 className="h-3.5 w-3.5" /></button><button onClick={() => void deleteMealItem(mealKey, idx)} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-danger/10 hover:text-danger transition" title="Delete meal item"><X className="h-3.5 w-3.5" /></button><Link href={`/app/xomni?mode=food&prompt=Suggest a healthier swap for ${item.name} in my ${mealKey}`} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-mist hover:text-primary transition" title="Swap with Xomni"><ArrowRightLeft className="h-3.5 w-3.5" /></Link></div>
                     </div>
                   ))}
                 </div>

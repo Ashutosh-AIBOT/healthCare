@@ -23,6 +23,7 @@ from app.ai.gateway import LLMGateway, Provider
 from app.core.deps import get_current_user
 from app.db.session import get_db
 from app.models.user import User
+from app.models.xomni import XomniConversation
 from app.services import xomni_service, points_service
 
 router = APIRouter(prefix="/xomni", tags=["xomni"])
@@ -48,6 +49,10 @@ class ChatResponse(BaseModel):
     action: dict | None = None
 
 
+class ActionDecisionRequest(BaseModel):
+    conversation_id: uuid.UUID
+
+
 class ConversationOut(BaseModel):
     id: str
     title: str
@@ -69,6 +74,7 @@ class TimetableActionRequest(BaseModel):
 class LiveKitTokenRequest(BaseModel):
     room_name: str | None = None   # auto-generated if omitted
     conversation_id: str | None = None
+    context: str | None = None
 
 
 # ─────────────────────────── Chat (NVIDIA + Groq streaming) ─────────────────
@@ -187,6 +193,42 @@ async def chat(
     )
 
 
+@router.post("/actions/confirm", response_model=dict)
+async def confirm_action(
+    payload: ActionDecisionRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Apply a pending Xomni proposal after explicit user confirmation."""
+    if current_user.family_id is None:
+        raise HTTPException(status_code=400, detail="Join a family first to use Xomni actions.")
+    try:
+        return await xomni_service.apply_pending_action(
+            db,
+            user_id=current_user.id,
+            family_id=current_user.family_id,
+            conversation_id=payload.conversation_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/actions/reject", response_model=dict)
+async def reject_action(
+    payload: ActionDecisionRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Discard a pending Xomni proposal without changing user data."""
+    conversation = await db.get(XomniConversation, payload.conversation_id)
+    if not conversation or conversation.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+    conversation.pending_action = None
+    conversation.pending_action_expires_at = None
+    await db.flush()
+    return {"rejected": True}
+
+
 # ─────────────────────────── Voice (Groq Whisper STT) ───────────────────────
 
 
@@ -250,11 +292,14 @@ async def livekit_token(
     name = current_user.full_name or current_user.email
 
     gateway = LLMGateway(db, user_id=str(current_user.id))
+    context_val = payload.context or "general"
+    metadata = json.dumps({"user_id": str(current_user.id), "context": context_val})
     try:
         token = await gateway.create_livekit_token(
             room_name=room,
             participant_identity=identity,
             participant_name=name,
+            metadata=metadata,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -262,11 +307,24 @@ async def livekit_token(
     import os
     livekit_url = os.environ.get("LIVEKIT_URL", "")
 
+    try:
+        dispatch_id = await gateway.dispatch_voice_agent(
+            room_name=room,
+            metadata=metadata,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
     return {
         "token": token,
         "room_name": room,
         "livekit_url": livekit_url,
         "participant_identity": identity,
+        "context": context_val,
+        "agent_dispatched": True,
+        "dispatch_id": dispatch_id,
     }
 
 
@@ -337,13 +395,10 @@ async def timetable_action(
     if current_user.family_id is None:
         raise HTTPException(status_code=400, detail="Join a family first to use timetable features.")
 
-    result = await points_service.parse_xomni_timetable_intent(
-        db,
-        user_id=current_user.id,
-        message=payload.message,
-        family_id=current_user.family_id,
+    raise HTTPException(
+        status_code=409,
+        detail="Use the Xomni chat to receive a preview and confirm timetable changes. Direct timetable actions are disabled.",
     )
-    return result
 
 
 # ─────────────────────────── Points ─────────────────────────────────────────

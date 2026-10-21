@@ -10,6 +10,7 @@ import {
   MoreHorizontal, Link2, Download, History, BrainCircuit, ActivitySquare, TriangleAlert
 } from "lucide-react";
 import { apiClient, getAccessToken, setAccessToken } from "@/lib/auth-client";
+import { VoiceTalkButton } from "@/components/app/voice-talk-button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -90,15 +91,16 @@ function ProposalCard({ action, onAccept, onReject }: { action: any, onAccept: (
   if (!action || !action.action) return null;
   const isMealPlan = action.action === "propose_meal_plan";
   const isTodo = action.action === "propose_todo";
+  const isFitness = action.action === "propose_fitness_activity";
 
-  if (!isMealPlan && !isTodo) return null;
+  if (!isMealPlan && !isTodo && !isFitness) return null;
 
   return (
     <div className="mt-4 border border-primary/20 bg-primary-soft/30 rounded-xl p-4 shadow-sm w-full max-w-sm">
       <div className="flex items-center gap-2 mb-3">
         <Sparkles className="h-4 w-4 text-primary" />
         <h4 className="text-sm font-semibold text-ink">
-          {isMealPlan ? "Meal Plan Update Proposed" : "Schedule Update Proposed"}
+          {isMealPlan ? "Meal Plan Update Proposed" : isFitness ? "Workout Log Proposed" : "Schedule Update Proposed"}
         </h4>
       </div>
 
@@ -112,6 +114,12 @@ function ProposalCard({ action, onAccept, onReject }: { action: any, onAccept: (
           <div>
             <p className="font-medium text-ink">{action.title}</p>
             <p className="text-muted text-xs mt-1">Time: {action.start_hour}:00 - {action.end_hour}:00</p>
+          </div>
+        )}
+        {isFitness && (
+          <div>
+            <p className="font-medium text-ink">{action.activity_type}</p>
+            <p className="text-muted text-xs mt-1">{action.duration_minutes} minutes{action.calories_burned ? ` · ${action.calories_burned} kcal` : ""}</p>
           </div>
         )}
       </div>
@@ -180,10 +188,14 @@ export default function XomniPage() {
 
 
 
-  // ── TTS helper ──────────────────────────────────────────────────────────
+  // ── TTS helper (spoken reply = short summary; full text stays on screen) ──
   const speak = (text: string) => {
     if (!ttsEnabled || typeof window === "undefined") return;
-    const utt = new SpeechSynthesisUtterance(text.replace(/[*_#`]/g, "").slice(0, 500));
+    const clean = text.replace(/[*_#`]/g, "");
+    const sentences = clean.match(/[^.!?]+[.!?]+/g) ?? [clean];
+    const summary = sentences.slice(0, 2).join(" ").trim().slice(0, 500);
+    if (!summary) return;
+    const utt = new SpeechSynthesisUtterance(summary);
     utt.rate = 1.05;
     utt.pitch = 1.0;
     window.speechSynthesis.cancel();
@@ -391,6 +403,20 @@ export default function XomniPage() {
       void startVoiceRecording();
     }
   };
+
+  // ── Live voice-room transcript → same send path as typed input ──────────
+  // History, points and guardrails apply unchanged; MediaRecorder flow above
+  // stays untouched as the fallback.
+  const handleVoiceRoomTranscript = useCallback(
+    (text: string) => {
+      void send(text);
+    },
+    [send]
+  );
+
+  const handleVoiceRoomError = useCallback((message: string) => {
+    setVoiceError(message);
+  }, []);
 
   // ── Load conversation messages ──────────────────────────────────────────
   const loadConversation = async (convId: string) => {
@@ -622,49 +648,45 @@ export default function XomniPage() {
                               onAccept={async () => {
                                 try {
                                   const token = getAccessToken();
-                                  if (message.action.action === "propose_meal_plan") {
-                                    await fetch("/api/v1/nutrition/meal-plan/save", {
-                                      method: "POST",
-                                      headers: {
-                                        "Content-Type": "application/json",
-                                        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                                      },
-                                      body: JSON.stringify({
-                                        plan_json: message.action.proposal,
-                                        created_by: "XOMNI"
-                                      }),
-                                    });
-                                  } else if (message.action.action === "propose_todo") {
-                                    await fetch("/api/v1/time/todos", {
-                                      method: "POST",
-                                      headers: {
-                                        "Content-Type": "application/json",
-                                        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                                      },
-                                      body: JSON.stringify({
-                                        title: message.action.title,
-                                        due_date: new Date().toISOString().split("T")[0],
-                                        priority: message.action.priority || "normal",
-                                        created_by: "XOMNI"
-                                      }),
-                                    });
-                                  }
+                                  if (!activeConvId) throw new Error("This proposal is no longer attached to a conversation.");
+                                  const response = await fetch("/api/v1/xomni/actions/confirm", {
+                                    method: "POST",
+                                    headers: {
+                                      "Content-Type": "application/json",
+                                      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                                    },
+                                    credentials: "include",
+                                    body: JSON.stringify({ conversation_id: activeConvId }),
+                                  });
+                                  if (!response.ok) throw new Error((await response.text()) || "Could not apply proposal.");
                                   // Add a system response back to chat
                                   setMessages(prev => [...prev, {
                                     id: `${Date.now()}-sys`,
                                     role: "user",
-                                    content: "I have accepted this proposal.",
+                                    content: "I have accepted this proposal and updated my plan.",
                                     createdAt: new Date()
                                   }]);
                                 } catch (e) {
-                                  console.error(e);
+                                  setError(e instanceof Error ? e.message : "Could not apply proposal.");
                                 }
                               }}
-                              onReject={() => {
+                              onReject={async () => {
+                                if (activeConvId) {
+                                  const token = getAccessToken();
+                                  await fetch("/api/v1/xomni/actions/reject", {
+                                    method: "POST",
+                                    headers: {
+                                      "Content-Type": "application/json",
+                                      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                                    },
+                                    credentials: "include",
+                                    body: JSON.stringify({ conversation_id: activeConvId }),
+                                  });
+                                }
                                 setMessages(prev => [...prev, {
                                   id: `${Date.now()}-sys`,
                                   role: "user",
-                                  content: "I reject this proposal. Let's adjust it.",
+                                  content: "I rejected this proposal. Let’s adjust it.",
                                   createdAt: new Date()
                                 }]);
                               }}
@@ -751,6 +773,12 @@ export default function XomniPage() {
                     {voiceState === "recording" ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
                   </button>
 
+                  <VoiceTalkButton
+                    onTranscript={handleVoiceRoomTranscript}
+                    onError={handleVoiceRoomError}
+                    context={mode}
+                  />
+
                   <Button
                     onClick={() => void send(input)}
                     disabled={!input.trim() || loading}
@@ -772,4 +800,3 @@ export default function XomniPage() {
     </div>
   );
 }
-

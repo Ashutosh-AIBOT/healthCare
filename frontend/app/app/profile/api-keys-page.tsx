@@ -52,8 +52,8 @@ export default function ProfileApiKeysPage() {
       name: "Gemini 1.5 Flash",
     },
     groq: {
-      model: "llama-3.1-8b-instant",
-      name: "Llama 3.1 8B Instant",
+      model: "openai/gpt-oss-120b",
+      name: "GPT-OSS 120B (Groq)",
     },
     ollama: {
       model: "llama3",

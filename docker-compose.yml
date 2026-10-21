@@ -169,6 +169,26 @@ services:
     networks:
       - aarogya
 
+  # LiveKit realtime voice worker (outbound WebRTC to LiveKit Cloud).
+  # Must share DATABASE_URL + SECRET_KEY with `api` so per-user Groq key
+  # lookup/decryption matches. No ports: the worker opens no inbound port.
+  livekit-agent:
+    build:
+      context: ./backend/livekit-agent
+      dockerfile: Dockerfile
+    environment:
+      LIVEKIT_URL: ${LIVEKIT_URL:-}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-aarogya}:${POSTGRES_PASSWORD:-aarogya}@postgres:5432/${POSTGRES_DB:-aarogya}
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - aarogya
+
 volumes:
   pg_data:
   redis_data:

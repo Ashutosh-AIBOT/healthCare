@@ -26,11 +26,21 @@ type FastingTest = {
   sort_order: number;
 };
 
+type FastingTestPage = {
+  items: FastingTest[];
+  page: number;
+  page_size: number;
+  total: number;
+  has_next: boolean;
+};
+
 export default function LearnTestPage() {
   const router = useRouter();
   const [parts, setParts] = useState<BodyPart[] | null>(null);
   const [mode, setMode] = useState<FastingMode>("all");
   const [fastingTests, setFastingTests] = useState<FastingTest[] | null>(null);
+  const [fastingPage, setFastingPage] = useState(1);
+  const [fastingHasNext, setFastingHasNext] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,22 +61,23 @@ export default function LearnTestPage() {
     }
   }, []);
 
-  const loadFasting = useCallback(async (m: Exclude<FastingMode, "all">) => {
+  const loadFasting = async (m: Exclude<FastingMode, "all">) => {
     setError(null);
     setFastingTests(null);
     try {
-      const res = await apiClient<FastingTest[]>(
-        `/api/v1/learn/tests?fasting=${m === "fasting" ? "true" : "false"}`,
+      const res = await apiClient<FastingTestPage>(
+        `/api/v1/learn/tests?fasting=${m === "fasting" ? "true" : "false"}&page=${fastingPage}&page_size=12`,
       );
       if (!res.error) {
-        setFastingTests(res.data || []);
+        setFastingTests(res.data?.items || []);
+        setFastingHasNext(Boolean(res.data?.has_next));
       } else {
         setError(res.error.detail || "Failed to load tests");
       }
     } catch {
       setError("Something went wrong");
     }
-  }, []);
+  };
 
   useEffect(() => {
     void load();
@@ -74,7 +85,7 @@ export default function LearnTestPage() {
 
   useEffect(() => {
     if (mode !== "all") void loadFasting(mode);
-  }, [mode, loadFasting]);
+  }, [mode, fastingPage]);
 
   if (loading) {
     return (
@@ -140,30 +151,26 @@ export default function LearnTestPage() {
             ))}
           </div>
         ) : fastingTests.length > 0 ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {fastingTests.map((t) => (
-              <div
-                key={t.id}
-                className="rounded-[1.5rem] border border-line bg-surface p-5 shadow-card"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <p className="font-semibold text-ink">{t.name}</p>
-                  <span
-                    className={`shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${
-                      t.fasting_required
-                        ? "bg-apricot/20 text-apricot"
-                        : "bg-mist text-muted"
-                    }`}
-                  >
-                    {t.fasting_required ? "Fasting" : "Non-fasting"}
-                  </span>
+          <>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {fastingTests.map((t) => (
+                <div key={t.id} className="rounded-[1.5rem] border border-line bg-surface p-5 shadow-card">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-semibold text-ink">{t.name}</p>
+                    <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${t.fasting_required ? "bg-apricot/20 text-apricot" : "bg-mist text-muted"}`}>
+                      {t.fasting_required ? "Fasting" : "Non-fasting"}
+                    </span>
+                  </div>
+                  {t.what_it_checks ? <p className="mt-1 line-clamp-2 text-sm text-muted">{t.what_it_checks}</p> : null}
                 </div>
-                {t.what_it_checks ? (
-                  <p className="mt-1 line-clamp-2 text-sm text-muted">{t.what_it_checks}</p>
-                ) : null}
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+            <div className="flex items-center justify-between pt-2">
+              <button type="button" disabled={fastingPage === 1} onClick={() => setFastingPage((value) => Math.max(1, value - 1))} className="rounded-lg border border-line px-3 py-2 text-sm font-semibold text-muted disabled:opacity-40">Previous</button>
+              <span className="text-xs text-muted">Page {fastingPage}</span>
+              <button type="button" disabled={!fastingHasNext} onClick={() => setFastingPage((value) => value + 1)} className="rounded-lg border border-line px-3 py-2 text-sm font-semibold text-muted disabled:opacity-40">Next</button>
+            </div>
+          </>
         ) : (
           <EmptyState title="No tests found" description="No tests in this group yet." />
         )

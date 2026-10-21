@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from datetime import UTC, date, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user
@@ -38,6 +40,23 @@ class MealPlanSaveRequest(BaseModel):
     plan_json: dict
     created_by: str = "USER"
     notes: str | None = None
+
+
+class NutritionLogRequest(BaseModel):
+    logged_date: date | None = None
+    entry_type: str = Field(pattern="^(meal|water)$")
+    meal_type: str | None = None
+    item_name: str | None = Field(default=None, max_length=200)
+    calories: int = Field(default=0, ge=0)
+    protein_g: float = Field(default=0, ge=0)
+    carbs_g: float = Field(default=0, ge=0)
+    fat_g: float = Field(default=0, ge=0)
+    water_ml: int = Field(default=0, ge=0)
+    notes: str | None = None
+
+
+class NutritionLogPatch(NutritionLogRequest):
+    entry_type: str | None = Field(default=None, pattern="^(meal|water)$")
 
 
 @router.post("/bmi", response_model=dict)
@@ -162,34 +181,17 @@ async def get_current_meal_plan(
     plan = (await db.execute(q)).scalars().first()
     
     if not plan:
-        # Default structured fallback
-        default_plan = {
-            "breakfast": [
-                {"name": "Oatmeal with chia seeds & almonds", "calories": 320, "protein": 12, "carbs": 48, "fats": 8, "created_by": "XOMNI"},
-                {"name": "Boiled eggs (2) or Tofu scramble", "calories": 150, "protein": 14, "carbs": 2, "fats": 10, "created_by": "XOMNI"}
-            ],
-            "lunch": [
-                {"name": "Brown rice with mixed dal & greens", "calories": 420, "protein": 18, "carbs": 68, "fats": 7, "created_by": "XOMNI"},
-                {"name": "Grilled chicken breast or paneer tikka", "calories": 240, "protein": 28, "carbs": 4, "fats": 12, "created_by": "XOMNI"}
-            ],
-            "snacks": [
-                {"name": "Roasted chana with green tea", "calories": 140, "protein": 7, "carbs": 22, "fats": 3, "created_by": "USER"}
-            ],
-            "dinner": [
-                {"name": "Quinoa bowl with steamed broccoli & lentils", "calories": 360, "protein": 16, "carbs": 52, "fats": 8, "created_by": "XOMNI"}
-            ]
-        }
         return {
             "id": None,
-            "plan_json": default_plan,
-            "created_by": "SYSTEM",
+            "plan_json": {},
+            "created_by": "NONE",
             "version": 1,
-            "ai_generated": True,
-            "notes": "Default starter plan based on balanced nutrition guidelines.",
-            "days_followed": 3,
+            "ai_generated": False,
+            "notes": None,
+            "days_followed": 0,
             "preferences": {
-                "craving": "Sourdough toast, Indian spices, cottage cheese, cold brew",
-                "recommended": "High-fiber grains, anti-inflammatory herbs, omega-3, lean proteins"
+                "craving": "No preferences recorded yet.",
+                "recommended": "Complete your nutrition profile to receive calibrated recommendations."
             }
         }
 
@@ -237,26 +239,80 @@ async def get_nutrition_summary(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> dict:
-    """Get daily summary of calories, macros, water, and adherence score."""
-    profile = await nutrition_service.get_nutrition_profile(db, user_id=current_user.id)
-    target_cal = profile.get("tdee_calories", 2150) if profile else 2150
-    target_protein = profile.get("target_protein_g", 120) if profile else 120
-    target_carbs = profile.get("target_carbs_g", 240) if profile else 240
-    target_fat = profile.get("target_fat_g", 65) if profile else 65
+    """Get today's summary from logged meals and water entries."""
+    from app.models.xomni import NutritionLog
 
+    today = datetime.now(UTC).date()
+    rows = (await db.execute(select(NutritionLog).where(NutritionLog.user_id == current_user.id, NutritionLog.logged_date == today))).scalars().all()
+    profile = await nutrition_service.get_nutrition_profile(db, user_id=current_user.id)
+    target_cal = (profile.get("tdee_calories") or 0) if profile else 0
+    target_protein = (profile.get("target_protein_g") or 0) if profile else 0
+    target_carbs = (profile.get("target_carbs_g") or 0) if profile else 0
+    target_fat = (profile.get("target_fat_g") or 0) if profile else 0
+
+    meals = [row for row in rows if row.entry_type == "meal"]
+    calories = sum(row.calories for row in meals)
+    water = sum(row.water_ml for row in rows)
+    protein = sum(row.protein_g for row in meals)
+    carbs = sum(row.carbs_g for row in meals)
+    fat = sum(row.fat_g for row in meals)
+    targets = [target_cal, target_protein, target_carbs, target_fat, 3000]
+    progress = [calories / target_cal if target_cal else 0, protein / target_protein if target_protein else 0, carbs / target_carbs if target_carbs else 0, fat / target_fat if target_fat else 0, water / 3000]
+    score = round(min(100, sum(min(1, value) for value in progress) / len(progress) * 100)) if rows else 0
     return {
-        "calories": 1640,
+        "calories": calories,
         "target_calories": target_cal,
-        "water_ml": 2400,
+        "water_ml": water,
         "water_target_ml": 3000,
-        "meals_logged": 3,
+        "meals_logged": len(meals),
         "meals_target": 4,
-        "protein_g": 94,
+        "protein_g": round(protein, 1),
         "target_protein_g": target_protein,
-        "carbs_g": 185,
+        "carbs_g": round(carbs, 1),
         "target_carbs_g": target_carbs,
-        "fat_g": 48,
+        "fat_g": round(fat, 1),
         "target_fat_g": target_fat,
-        "score": 88,
+        "score": score,
     }
 
+
+@router.get("/logs", response_model=list[dict])
+async def list_nutrition_logs(db: Annotated[AsyncSession, Depends(get_db)], current_user: Annotated[User, Depends(get_current_user)], logged_date: date | None = None):
+    from app.models.xomni import NutritionLog
+    target = logged_date or datetime.now(UTC).date()
+    rows = (await db.execute(select(NutritionLog).where(NutritionLog.user_id == current_user.id, NutritionLog.logged_date == target).order_by(NutritionLog.created_at.desc()))).scalars().all()
+    return [{"id": str(row.id), "logged_date": row.logged_date.isoformat(), "entry_type": row.entry_type, "meal_type": row.meal_type, "item_name": row.item_name, "calories": row.calories, "protein_g": row.protein_g, "carbs_g": row.carbs_g, "fat_g": row.fat_g, "water_ml": row.water_ml, "notes": row.notes} for row in rows]
+
+
+@router.post("/logs", response_model=dict, status_code=201)
+async def create_nutrition_log(payload: NutritionLogRequest, db: Annotated[AsyncSession, Depends(get_db)], current_user: Annotated[User, Depends(get_current_user)]):
+    from app.models.xomni import NutritionLog
+    if payload.entry_type == "water" and payload.water_ml <= 0:
+        raise HTTPException(status_code=422, detail="water_ml must be greater than zero")
+    row = NutritionLog(user_id=current_user.id, logged_date=payload.logged_date or datetime.now(UTC).date(), **payload.model_dump(exclude={"logged_date"}))
+    db.add(row)
+    await db.commit()
+    return {"id": str(row.id), "status": "created"}
+
+
+@router.delete("/logs/{log_id}", status_code=204)
+async def delete_nutrition_log(log_id: str, db: Annotated[AsyncSession, Depends(get_db)], current_user: Annotated[User, Depends(get_current_user)]):
+    from app.models.xomni import NutritionLog
+    row = await db.scalar(select(NutritionLog).where(NutritionLog.id == log_id, NutritionLog.user_id == current_user.id))
+    if not row:
+        raise HTTPException(status_code=404, detail="Nutrition log not found")
+    await db.delete(row)
+    await db.commit()
+
+
+@router.patch("/logs/{log_id}", response_model=dict)
+async def update_nutrition_log(log_id: str, payload: NutritionLogPatch, db: Annotated[AsyncSession, Depends(get_db)], current_user: Annotated[User, Depends(get_current_user)]):
+    from app.models.xomni import NutritionLog
+    row = await db.scalar(select(NutritionLog).where(NutritionLog.id == log_id, NutritionLog.user_id == current_user.id))
+    if not row:
+        raise HTTPException(status_code=404, detail="Nutrition log not found")
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        if value is not None:
+            setattr(row, key, value)
+    await db.commit()
+    return {"id": str(row.id), "status": "updated"}

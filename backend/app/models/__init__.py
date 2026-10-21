@@ -13,6 +13,8 @@ from app.models import time
 from app.models import user
 from app.models import visibility
 from app.models import xomni  # Xomni chat, nutrition, fitness, timetable points
+from app.models import rag_context
+from app.models import telegram
 
 __all__ = [
     "documents",
@@ -29,4 +31,6 @@ __all__ = [
     "user",
     "visibility",
     "xomni",
+    "rag_context",
+    "telegram",
 ]

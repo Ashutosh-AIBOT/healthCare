@@ -7,14 +7,16 @@ import json
 import uuid
 from typing import Annotated, AsyncIterator
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, File, Header, UploadFile
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_current_user
 from app.core.errors import AppError
 from app.db.session import get_db
 from app.models.user import User
+from app.models.documents import Document
 from app.schemas.documents import (
     DocumentConfirmRequest,
     DocumentConfirmResponse,
@@ -69,6 +71,29 @@ async def confirm_document(
         idempotency_key=key,
     )
     return DocumentConfirmResponse(**result)
+
+
+@router.post("/documents/{document_id}/upload", status_code=204)
+async def upload_local_document(
+    document_id: uuid.UUID,
+    file: Annotated[UploadFile, File(description="PDF report")],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> None:
+    """Upload bytes through the API when object storage is using local fallback mode."""
+    family_id = _require_family(current_user)
+    document = await db.scalar(select(Document).where(Document.id == document_id, Document.family_id == family_id))
+    if document is None:
+        raise AppError(code="NOT_FOUND", status=404, detail="Document not found.")
+    if file.content_type not in ("application/pdf", "application/x-pdf"):
+        raise AppError(code="UNSUPPORTED_MEDIA", status=415, detail="Only PDF uploads are supported.")
+    data = await file.read()
+    if len(data) > 25 * 1024 * 1024:
+        raise AppError(code="PAYLOAD_TOO_LARGE", status=413, detail="File exceeds size limit.")
+    from app.integrations import storage
+    storage.put_object(document.object_key, data, content_type=file.content_type)
+    document.byte_size = len(data)
+    await db.flush()
 
 
 @router.get("/documents", response_model=list[DocumentOut])

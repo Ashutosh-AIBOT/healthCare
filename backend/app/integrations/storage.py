@@ -19,6 +19,10 @@ def _init_client() -> None:
     global _minio_client, _use_local
     if _minio_client is not None or _use_local:
         return
+    if not settings.minio_endpoint.strip():
+        _use_local = True
+        _LOCAL_ROOT.mkdir(parents=True, exist_ok=True)
+        return
     try:
         from minio import Minio
 

@@ -7,6 +7,7 @@ import { Card, EmptyState, ErrorState, Skeleton } from "@/components/ui/card";
 import { Disclaimer } from "@/components/brand";
 import { apiClient, getAccessToken } from "@/lib/auth-client";
 import { TriangleAlert, UploadCloud, ChevronDown, FileText, Sparkles } from "lucide-react";
+import Link from "next/link";
 
 type Doc = { id: string; filename: string; status: string; job_id?: string | null };
 type Member = { id: string };
@@ -73,6 +74,15 @@ export function ReportsClient() {
           method: "PUT",
           body: file,
           headers: { "Content-Type": file.type || "application/pdf" },
+        });
+      } else {
+        const body = new FormData();
+        body.append("file", file);
+        await fetch(`/api/v1/documents/${urlRes.data.document_id}/upload`, {
+          method: "POST",
+          body,
+          credentials: "include",
+          headers: (() => { const token = getAccessToken(); const headers: Record<string, string> = {}; if (token) headers.Authorization = `Bearer ${token}`; return headers; })(),
         });
       }
     } catch {
@@ -228,10 +238,18 @@ export function ReportsClient() {
                       <p className="text-[11px] text-text-secondary">Status: {d.status}</p>
                     </div>
                   </div>
-                  <Button size="sm" variant="secondary" onClick={() => void ask(d.id)} loading={asking}>
-                    <Sparkles className="h-3.5 w-3.5 mr-1.5" />
-                    Ask about this report
-                  </Button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button size="sm" variant="secondary" onClick={() => void ask(d.id)} loading={asking}>
+                      <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+                      Ask about this report
+                    </Button>
+                    <Link
+                      href={`/app/xomni?mode=reports&member_id=${encodeURIComponent(memberId)}&document_id=${encodeURIComponent(d.id)}`}
+                      className="inline-flex h-9 items-center rounded-md border border-border bg-surface px-3 text-xs font-medium text-text-primary transition-colors hover:bg-surface-hover"
+                    >
+                      Open in Xomni
+                    </Link>
+                  </div>
                 </div>
               </div>
             </li>
